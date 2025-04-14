@@ -8,7 +8,8 @@ const {
   fetchLatestBaileysVersion,
   DisconnectReason,
   makeInMemoryStore,
-  jidDecode
+  jidDecode,
+  Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
@@ -155,7 +156,7 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
     logger: pino({ level: config.LOG_LEVEL }),
     printQRInTerminal: false,
     auth: state,
-    browser: ['WhatsApp Manager Bot', 'Chrome', '3.0.0'],
+    browser: Browsers.ubuntu('WhatsApp Manager Bot'),
     // Tambahan opsi sesuai dokumentasi terbaru
     getMessage: async (key) => {
       if (store) {
@@ -243,7 +244,7 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
 
 /**
  * Fungsi untuk mengkoneksikan WhatsApp menggunakan pairing code
- * Mengikuti dokumentasi terbaru dari baileys
+ * Implementasi yang sesuai dengan contoh dari dokumentasi resmi
  * @param {string} sessionId - ID unik untuk session WhatsApp
  * @param {string} phoneNumber - Nomor telepon untuk pairing (format: 628xxxxxxxxxx)
  * @param {function} connectionCallback - Callback yang dipanggil ketika status koneksi berubah
@@ -325,7 +326,7 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
     logger: pino({ level: config.LOG_LEVEL }),
     printQRInTerminal: false,
     auth: state,
-    browser: ['WhatsApp Manager Bot', 'Chrome', '3.0.0'],
+    browser: Browsers.ubuntu('WhatsApp Manager Bot'),
     // Konfigurasi penting untuk pairing code
     mobile: false,
     getMessage: async (key) => {
@@ -385,29 +386,34 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
   // Menyinkronkan pesan dengan store
   store.bind(sock.ev);
 
-  // Dapatkan kode pairing dengan nomor telepon
   try {
-    // Format nomor telepon ke format yang benar (hapus semua karakter non-numerik)
-    let formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
-    
-    // Pastikan format diawali dengan kode negara (tanpa +)
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62' + formattedPhone.substring(1);
+    // Periksa apakah perangkat sudah terdaftar
+    if (!sock.authState.creds.registered) {
+      console.log(`[INFO] Perangkat belum terdaftar, meminta kode pairing untuk: ${phoneNumber}`);
+      
+      // Format nomor telepon (bersihkan kode +, spasi, dan karakter non-angka)
+      let formattedPhone = phoneNumber.replace(/\D/g, '');
+      
+      // Pastikan format diawali dengan kode negara (tanpa +)
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '62' + formattedPhone.substring(1);
+      }
+      
+      // Validasi nomor telepon
+      if (formattedPhone.length < 10 || formattedPhone.length > 15) {
+        throw new Error('Format nomor telepon tidak valid');
+      }
+      
+      // Minta kode pairing dengan implementasi yang sesuai contoh
+      const code = await sock.requestPairingCode(formattedPhone);
+      console.log(`[INFO] Kode pairing diterima: ${code}`);
+      
+      // Kirim kode pairing ke callback
+      connectionCallback('pairing_code', code);
+    } else {
+      console.log('[INFO] Perangkat sudah terdaftar, menunggu koneksi...');
+      connectionCallback('waiting_connection');
     }
-    
-    // Validasi nomor telepon
-    if (formattedPhone.length < 10 || formattedPhone.length > 15) {
-      throw new Error('Format nomor telepon tidak valid');
-    }
-    
-    console.log(`[INFO] Meminta kode pairing untuk: ${formattedPhone}`);
-    
-    // Implement requestPairingCode sesuai dokumentasi terbaru
-    const code = await sock.requestPairingCode(formattedPhone);
-    console.log(`[INFO] Kode pairing diterima: ${code}`);
-    
-    // Kirim kode pairing ke callback
-    connectionCallback('pairing_code', code);
   } catch (error) {
     console.error('[ERROR] Error saat meminta kode pairing:', error);
     connectionCallback('error', error.message || 'Gagal mendapatkan kode pairing');
