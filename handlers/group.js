@@ -1,6 +1,9 @@
 /**
  * Handler untuk manajemen grup WhatsApp
  */
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
 const {
   getWhatsAppSession,
   getWhatsAppGroups,
@@ -13,13 +16,14 @@ const {
 } = require('../services/whatsapp');
 
 /**
- * Menangani melihat daftar grup
+ * Menangani melihat daftar grup dengan pagination
  * @param {Object} bot - Instance bot Telegram
  * @param {number} chatId - ID chat Telegram
  * @param {number} messageId - ID pesan Telegram
  * @param {string} sessionId - ID session WhatsApp
+ * @param {number} page - Nomor halaman saat ini (default: 1)
  */
-async function handleViewGroups(bot, chatId, messageId, sessionId) {
+async function handleViewGroups(bot, chatId, messageId, sessionId, page = 1) {
   const session = getWhatsAppSession(sessionId);
   
   if (!session || !session.connected) {
@@ -68,19 +72,48 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
       return;
     }
 
-    // Batasi jumlah grup yang ditampilkan untuk mencegah keyboard terlalu besar
-    const maxGroups = 20;
-    const limitedGroups = groups.slice(0, maxGroups);
+    // Konfigurasi pagination
+    const groupsPerPage = 10;
+    const totalPages = Math.ceil(groups.length / groupsPerPage);
     
-    const keyboard = limitedGroups.map(group => {
+    // Validasi halaman
+    page = page < 1 ? 1 : page > totalPages ? totalPages : page;
+    
+    // Hitung index untuk slicing
+    const startIdx = (page - 1) * groupsPerPage;
+    const endIdx = startIdx + groupsPerPage;
+    
+    // Ambil grup untuk halaman ini
+    const pageGroups = groups.slice(startIdx, endIdx);
+    
+    // Buat keyboard untuk grup
+    const keyboard = pageGroups.map(group => {
       // Batasi panjang nama grup untuk mencegah keyboard terlalu lebar
       const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
       return [{ text: `👥 ${displayName}`, callback_data: `group:${sessionId}:${group.id}` }];
     });
-
+    
+    // Tambahkan navigasi pagination jika perlu
+    const navButtons = [];
+    
+    if (totalPages > 1) {
+      if (page > 1) {
+        navButtons.push({ text: '⬅️ Sebelumnya', callback_data: `view_groups:${sessionId}:${page-1}` });
+      }
+      
+      navButtons.push({ text: `📄 ${page}/${totalPages}`, callback_data: `current_page:${sessionId}` });
+      
+      if (page < totalPages) {
+        navButtons.push({ text: 'Selanjutnya ➡️', callback_data: `view_groups:${sessionId}:${page+1}` });
+      }
+      
+      keyboard.push(navButtons);
+    }
+    
+    // Tambahkan tombol kembali
     keyboard.push([{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]);
 
-    await bot.editMessageText(`📋 *DAFTAR GRUP*\n\nTotal: ${groups.length} grup${groups.length > maxGroups ? ` (menampilkan ${maxGroups} pertama)` : ''}\n\nPilih grup untuk mengelola:`, {
+    await bot.editMessageText(`📋 *DAFTAR GRUP*\n\nTotal: ${groups.length} grup${totalPages > 1 ? ` (Halaman ${page} dari ${totalPages})` : ''}\n\nPilih grup untuk mengelola:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -103,7 +136,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
 }
 
 /**
- * Menangani mendapatkan semua link grup
+ * Menangani mendapatkan semua link grup dengan dukungan ekspor ke file TXT
  * @param {Object} bot - Instance bot Telegram
  * @param {number} chatId - ID chat Telegram
  * @param {number} messageId - ID pesan Telegram
@@ -158,58 +191,114 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
       return;
     }
 
-    // Buat pesan dengan daftar semua link grup
-    let message = `🔗 *DAFTAR LINK GRUP*\n\nTotal: ${groupLinks.length} grup\n\n`;
-    
-    // Format pesan dengan semua link grup
+    // Format data untuk output
     const successGroups = groupLinks.filter(g => g.link !== null);
     const failedGroups = groupLinks.filter(g => g.link === null);
     
-    message += `✅ Link berhasil diambil: ${successGroups.length}\n`;
-    message += `❌ Link gagal diambil: ${failedGroups.length}\n\n`;
+    // Cek apakah jumlah grup terlalu banyak (>30) atau total karakter terlalu panjang
+    const shouldUseFile = groupLinks.length > 30 || successGroups.length > 25;
     
-    // Tambahkan semua link grup yang berhasil
-    for (let i = 0; i < successGroups.length; i++) {
-      const group = successGroups[i];
-      // Batasi panjang nama grup
-      const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
-      // Jangan melebihi batas maksimum karakter Telegram (4096)
-      const groupEntry = `${i+1}. ${displayName}:\n${group.link}\n\n`;
-      if (message.length + groupEntry.length < 4000) {
-        message += groupEntry;
-      } else {
-        message += `... dan ${successGroups.length - i} grup lainnya (pesan terlalu panjang)`;
-        break;
+    if (shouldUseFile) {
+      // Buat konten file teks
+      let fileContent = `DAFTAR LINK GRUP WHATSAPP\n`;
+      fileContent += `Total: ${groupLinks.length} grup\n`;
+      fileContent += `Berhasil diambil: ${successGroups.length}\n`;
+      fileContent += `Gagal diambil: ${failedGroups.length}\n\n`;
+      fileContent += `=================================================\n\n`;
+      
+      // Tambahkan semua link grup yang berhasil
+      successGroups.forEach((group, index) => {
+        fileContent += `${index+1}. ${group.name}:\n${group.link}\n\n`;
+      });
+      
+      // Tambahkan daftar grup yang gagal
+      if (failedGroups.length > 0) {
+        fileContent += `\n=================================================\n`;
+        fileContent += `GRUP DENGAN ERROR:\n\n`;
+        failedGroups.forEach((group, index) => {
+          fileContent += `${index+1}. ${group.name}: ${group.error || 'Unknown error'}\n`;
+        });
       }
-    }
-    
-    // Tampilkan pesan error untuk grup yang gagal (jika ada)
-    if (failedGroups.length > 0 && message.length < 3800) {
-      message += "\n*GRUP DENGAN ERROR:*\n";
-      for (let i = 0; i < failedGroups.length; i++) {
-        const group = failedGroups[i];
+      
+      // Buat file temporari
+      const tempFilePath = path.join(os.tmpdir(), `group_links_${Date.now()}.txt`);
+      fs.writeFileSync(tempFilePath, fileContent);
+      
+      // Kirim file
+      await bot.sendDocument(chatId, tempFilePath, {
+        caption: `🔗 *DAFTAR LINK GRUP*\n\nTotal: ${groupLinks.length} grup\n✅ Berhasil: ${successGroups.length}\n❌ Gagal: ${failedGroups.length}\n\nDaftar lengkap tersedia dalam file ini.`,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh', callback_data: `get_all_links:${sessionId}` }],
+            [{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]
+          ]
+        }
+      });
+      
+      // Hapus pesan "sedang mengambil data"
+      try {
+        await bot.deleteMessage(chatId, messageId);
+      } catch (err) {
+        console.error('[ERROR] Gagal menghapus pesan loading:', err);
+      }
+      
+      // Hapus file temporari
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch (err) {
+        console.error('[ERROR] Gagal menghapus file temporari:', err);
+      }
+    } else {
+      // Buat pesan dengan daftar semua link grup (metode lama)
+      let message = `🔗 *DAFTAR LINK GRUP*\n\nTotal: ${groupLinks.length} grup\n\n`;
+      
+      message += `✅ Link berhasil diambil: ${successGroups.length}\n`;
+      message += `❌ Link gagal diambil: ${failedGroups.length}\n\n`;
+      
+      // Tambahkan semua link grup yang berhasil
+      for (let i = 0; i < successGroups.length; i++) {
+        const group = successGroups[i];
+        // Batasi panjang nama grup
         const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
-        const errorEntry = `- ${displayName}: ${group.error || 'Unknown error'}\n`;
-        if (message.length + errorEntry.length < 4000) {
-          message += errorEntry;
+        // Jangan melebihi batas maksimum karakter Telegram (4096)
+        const groupEntry = `${i+1}. ${displayName}:\n${group.link}\n\n`;
+        if (message.length + groupEntry.length < 4000) {
+          message += groupEntry;
         } else {
-          message += `... dan ${failedGroups.length - i} grup error lainnya`;
+          message += `... dan ${successGroups.length - i} grup lainnya (pesan terlalu panjang)`;
           break;
         }
       }
-    }
-
-    await bot.editMessageText(message, {
-      chat_id: chatId,
-      message_id: messageId,
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🔄 Refresh', callback_data: `get_all_links:${sessionId}` }],
-          [{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]
-        ]
+      
+      // Tampilkan pesan error untuk grup yang gagal (jika ada)
+      if (failedGroups.length > 0 && message.length < 3800) {
+        message += "\n*GRUP DENGAN ERROR:*\n";
+        for (let i = 0; i < failedGroups.length; i++) {
+          const group = failedGroups[i];
+          const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
+          const errorEntry = `- ${displayName}: ${group.error || 'Unknown error'}\n`;
+          if (message.length + errorEntry.length < 4000) {
+            message += errorEntry;
+          } else {
+            message += `... dan ${failedGroups.length - i} grup error lainnya`;
+            break;
+          }
+        }
       }
-    });
+
+      await bot.editMessageText(message, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔄 Refresh', callback_data: `get_all_links:${sessionId}` }],
+            [{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]
+          ]
+        }
+      });
+    }
   } catch (error) {
     await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengambil link grup: ${error.message}`, {
       chat_id: chatId,
@@ -373,6 +462,47 @@ async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
 }
 
 /**
+ * Menangani pengaturan grup
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ * @param {string} groupId - ID grup WhatsApp
+ */
+async function handleGroupSettings(bot, chatId, messageId, sessionId, groupId) {
+  const session = getWhatsAppSession(sessionId);
+  
+  if (!session || !session.connected) {
+    await bot.editMessageText('❌ *AKUN TIDAK TERHUBUNG*\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+    return;
+  }
+  
+  await bot.editMessageText('⚙️ *PENGATURAN GRUP*\n\nPilih pengaturan yang ingin diubah:', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔒 Hanya Admin yang Dapat Mengirim Pesan', callback_data: `toggle_announce:${sessionId}:${groupId}:true` }],
+        [{ text: '🔓 Semua Anggota Dapat Mengirim Pesan', callback_data: `toggle_announce:${sessionId}:${groupId}:false` }],
+        [{ text: '🔒 Hanya Admin yang Dapat Mengubah Info Grup', callback_data: `toggle_restrict:${sessionId}:${groupId}:true` }],
+        [{ text: '🔓 Semua Anggota Dapat Mengubah Info Grup', callback_data: `toggle_restrict:${sessionId}:${groupId}:false` }],
+        [{ text: '🔙 Kembali ke Grup', callback_data: `back_to_group:${sessionId}:${groupId}` }]
+      ]
+    }
+  });
+}
+
+/**
  * Menangani mengubah nama grup
  * @param {Object} bot - Instance bot Telegram
  * @param {number} chatId - ID chat Telegram
@@ -495,31 +625,6 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       }
     });
   }
-}
-
-/**
- * Menangani pengaturan grup
- * @param {Object} bot - Instance bot Telegram
- * @param {number} chatId - ID chat Telegram
- * @param {number} messageId - ID pesan Telegram
- * @param {string} sessionId - ID session WhatsApp
- * @param {string} groupId - ID grup WhatsApp
- */
-async function handleGroupSettings(bot, chatId, messageId, sessionId, groupId) {
-  await bot.editMessageText('⚙️ *PENGATURAN GRUP*\n\nPilih pengaturan yang ingin diubah:', {
-    chat_id: chatId,
-    message_id: messageId,
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '🔒 Hanya Admin yang Dapat Mengirim Pesan', callback_data: `toggle_announce:${sessionId}:${groupId}:true` }],
-        [{ text: '🔓 Semua Anggota Dapat Mengirim Pesan', callback_data: `toggle_announce:${sessionId}:${groupId}:false` }],
-        [{ text: '🔒 Hanya Admin yang Dapat Mengubah Info Grup', callback_data: `toggle_restrict:${sessionId}:${groupId}:true` }],
-        [{ text: '🔓 Semua Anggota Dapat Mengubah Info Grup', callback_data: `toggle_restrict:${sessionId}:${groupId}:false` }],
-        [{ text: '🔙 Kembali ke Grup', callback_data: `back_to_group:${sessionId}:${groupId}` }]
-      ]
-    }
-  });
 }
 
 /**
