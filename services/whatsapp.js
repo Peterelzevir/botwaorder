@@ -8,7 +8,6 @@ const {
   fetchLatestBaileysVersion,
   DisconnectReason,
   makeInMemoryStore,
-  jidDecode,
   Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
@@ -157,16 +156,8 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
     printQRInTerminal: false,
     auth: state,
     browser: Browsers.ubuntu('WhatsApp Manager Bot'),
-    // Tambahan opsi sesuai dokumentasi terbaru
-    getMessage: async (key) => {
-      if (store) {
-        const msg = await store.loadMessage(key.remoteJid, key.id);
-        return msg?.message || undefined;
-      }
-      return {
-        conversation: 'Pesan tidak tersedia'
-      };
-    }
+    // Penting untuk mendukung pairing code dan QR
+    mobile: false
   });
 
   // Menyimpan session
@@ -258,10 +249,6 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
     throw new Error('Nomor telepon tidak dapat kosong');
   }
   
-  if (typeof connectionCallback !== 'function') {
-    throw new Error('ConnectionCallback harus berupa fungsi');
-  }
-  
   // Memastikan direktori sessions ada
   ensureSessionsDirectory();
   
@@ -294,32 +281,6 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
     console.log(`Menggunakan versi fallback WA v${version.join('.')}`);
   }
   
-  // Store untuk menyimpan pesan
-  const store = makeInMemoryStore({});
-  const storePath = path.join(sessionFolder, 'store.json');
-  
-  try {
-    if (fs.existsSync(storePath)) {
-      store.readFromFile(storePath);
-    }
-    
-    // Set interval untuk menyimpan store secara periodik
-    const storeInterval = setInterval(() => {
-      try {
-        store.writeToFile(storePath);
-      } catch (error) {
-        console.error(`[ERROR] Gagal menyimpan store: ${error.message}`);
-      }
-    }, 10000);
-    
-    // Cleanup interval pada process exit
-    process.on('exit', () => {
-      clearInterval(storeInterval);
-    });
-  } catch (error) {
-    console.error(`[WARNING] Gagal membaca store: ${error.message}`);
-  }
-  
   // Membuat socket WhatsApp dengan mengikuti dokumentasi baileys terbaru
   const sock = makeWASocket({
     version,
@@ -328,22 +289,12 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
     auth: state,
     browser: Browsers.ubuntu('WhatsApp Manager Bot'),
     // Konfigurasi penting untuk pairing code
-    mobile: false,
-    getMessage: async (key) => {
-      if (store) {
-        const msg = await store.loadMessage(key.remoteJid, key.id);
-        return msg?.message || undefined;
-      }
-      return {
-        conversation: 'Pesan tidak tersedia'
-      };
-    }
+    mobile: false
   });
-
+  
   // Menyimpan session
   sessions[sessionId] = {
     sock,
-    store,
     connected: false,
     createdAt: new Date(),
     lastActive: new Date()
@@ -382,41 +333,43 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
 
   // Menyimpan kredensial
   sock.ev.on('creds.update', saveCreds);
-
-  // Menyinkronkan pesan dengan store
-  store.bind(sock.ev);
-
+  
   try {
+    // Format nomor telepon (bersihkan kode +, spasi, dan karakter non-angka)
+    let formattedPhone = phoneNumber.replace(/\D/g, '');
+    
+    // Pastikan format diawali dengan kode negara (tanpa +)
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '62' + formattedPhone.substring(1);
+    }
+    
+    // Validasi nomor telepon
+    if (formattedPhone.length < 10 || formattedPhone.length > 15) {
+      throw new Error('Format nomor telepon tidak valid');
+    }
+    
     // Periksa apakah perangkat sudah terdaftar
     if (!sock.authState.creds.registered) {
-      console.log(`[INFO] Perangkat belum terdaftar, meminta kode pairing untuk: ${phoneNumber}`);
+      console.log(`[INFO] Perangkat belum terdaftar, meminta kode pairing untuk: ${formattedPhone}`);
       
-      // Format nomor telepon (bersihkan kode +, spasi, dan karakter non-angka)
-      let formattedPhone = phoneNumber.replace(/\D/g, '');
-      
-      // Pastikan format diawali dengan kode negara (tanpa +)
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '62' + formattedPhone.substring(1);
+      // Minta kode pairing dengan implementasi yang sesuai contoh terbaru
+      try {
+        const code = await sock.requestPairingCode(formattedPhone);
+        console.log(`[INFO] Kode pairing diterima: ${code}`);
+        
+        // Kirim kode pairing ke callback
+        connectionCallback('pairing_code', code);
+      } catch (error) {
+        console.error('[ERROR] Error saat meminta kode pairing:', error);
+        connectionCallback('error', `Gagal mendapatkan kode pairing: ${error.message || 'Unknown error'}`);
       }
-      
-      // Validasi nomor telepon
-      if (formattedPhone.length < 10 || formattedPhone.length > 15) {
-        throw new Error('Format nomor telepon tidak valid');
-      }
-      
-      // Minta kode pairing dengan implementasi yang sesuai contoh
-      const code = await sock.requestPairingCode(formattedPhone);
-      console.log(`[INFO] Kode pairing diterima: ${code}`);
-      
-      // Kirim kode pairing ke callback
-      connectionCallback('pairing_code', code);
     } else {
       console.log('[INFO] Perangkat sudah terdaftar, menunggu koneksi...');
       connectionCallback('waiting_connection');
     }
   } catch (error) {
-    console.error('[ERROR] Error saat meminta kode pairing:', error);
-    connectionCallback('error', error.message || 'Gagal mendapatkan kode pairing');
+    console.error('[ERROR] Error saat proses pairing:', error);
+    connectionCallback('error', error.message || 'Gagal dalam proses pairing');
   }
 
   return sock;
@@ -467,11 +420,11 @@ async function getWhatsAppGroups(sessionId) {
     for (const [id, chat] of Object.entries(chats)) {
       groups.push({
         id,
-        name: chat.subject,
-        participants: chat.participants.map(p => ({
+        name: chat.subject || 'Nama Grup Tidak Diketahui',
+        participants: Array.isArray(chat.participants) ? chat.participants.map(p => ({
           id: p.id,
           isAdmin: p.admin ? true : false
-        }))
+        })) : []
       });
     }
   } catch (error) {
