@@ -1,5 +1,6 @@
 /**
  * Integrasi dengan WhatsApp menggunakan @whiskeysockets/baileys
+ * Terintegrasi dengan sistem manajemen error dan logging struktural
  */
 const {
   default: makeWASocket,
@@ -18,6 +19,37 @@ const config = require('../config');
 // Store untuk menyimpan semua session WhatsApp
 const sessions = {};
 
+// Memastikan direktori sessions ada
+function ensureSessionsDirectory() {
+  try {
+    if (!fs.existsSync(config.SESSIONS_DIR)) {
+      fs.mkdirSync(config.SESSIONS_DIR, { recursive: true });
+      console.log(`Direktori sesi dibuat: ${config.SESSIONS_DIR}`);
+    }
+  } catch (error) {
+    console.error(`[FATAL] Gagal membuat direktori sesi: ${error.message}`);
+    throw new Error(`Gagal membuat direktori sesi: ${error.message}`);
+  }
+}
+
+// Memastikan direktori session spesifik ada
+function ensureSessionDirectory(sessionId) {
+  if (!sessionId || typeof sessionId !== 'string') {
+    throw new Error('SessionID tidak valid');
+  }
+  
+  try {
+    const sessionFolder = path.join(config.SESSIONS_DIR, sessionId);
+    if (!fs.existsSync(sessionFolder)) {
+      fs.mkdirSync(sessionFolder, { recursive: true });
+    }
+    return sessionFolder;
+  } catch (error) {
+    console.error(`[ERROR] Gagal membuat direktori sesi untuk ${sessionId}: ${error.message}`);
+    throw new Error(`Gagal membuat direktori sesi: ${error.message}`);
+  }
+}
+
 /**
  * Fungsi untuk menginisialisasi koneksi WhatsApp baru
  * @param {string} sessionId - ID unik untuk session WhatsApp
@@ -25,25 +57,66 @@ const sessions = {};
  * @param {function} connectionCallback - Callback yang dipanggil ketika status koneksi berubah
  */
 async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
+  if (!sessionId) {
+    throw new Error('SessionID tidak dapat kosong');
+  }
+  
+  // Memastikan direktori sessions ada
+  ensureSessionsDirectory();
+  
   // Membuat folder untuk menyimpan autentikasi
-  const sessionFolder = path.join(config.SESSION_DIR, sessionId);
-  if (!fs.existsSync(sessionFolder)) {
-    fs.mkdirSync(sessionFolder, { recursive: true });
+  const sessionFolder = ensureSessionDirectory(sessionId);
+
+  // Menggunakan multi file auth state dengan error handling
+  let state, saveCreds;
+  try {
+    const authResult = await useMultiFileAuthState(sessionFolder);
+    state = authResult.state;
+    saveCreds = authResult.saveCreds;
+  } catch (error) {
+    console.error(`[ERROR] Gagal memuat auth state: ${error.message}`);
+    throw new Error(`Gagal memuat auth state: ${error.message}`);
   }
 
-  // Menggunakan multi file auth state
-  const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
-
   // Mengambil versi terbaru Baileys
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`Menggunakan WA v${version.join('.')}, terbaru: ${isLatest}`);
+  let version, isLatest;
+  try {
+    const versionInfo = await fetchLatestBaileysVersion();
+    version = versionInfo.version;
+    isLatest = versionInfo.isLatest;
+    console.log(`Menggunakan WA v${version.join('.')}, terbaru: ${isLatest}`);
+  } catch (error) {
+    console.error(`[ERROR] Gagal mendapatkan versi Baileys: ${error.message}`);
+    // Gunakan versi default untuk fallback
+    version = [2, 2311, 6];
+    console.log(`Menggunakan versi fallback WA v${version.join('.')}`);
+  }
 
   // Store untuk menyimpan pesan
   const store = makeInMemoryStore({});
-  store.readFromFile(path.join(sessionFolder, 'store.json'));
-  setInterval(() => {
-    store.writeToFile(path.join(sessionFolder, 'store.json'));
-  }, 10000);
+  const storePath = path.join(sessionFolder, 'store.json');
+  
+  try {
+    if (fs.existsSync(storePath)) {
+      store.readFromFile(storePath);
+    }
+    
+    // Set interval untuk menyimpan store secara periodik
+    const storeInterval = setInterval(() => {
+      try {
+        store.writeToFile(storePath);
+      } catch (error) {
+        console.error(`[ERROR] Gagal menyimpan store: ${error.message}`);
+      }
+    }, 10000);
+    
+    // Cleanup interval pada process exit
+    process.on('exit', () => {
+      clearInterval(storeInterval);
+    });
+  } catch (error) {
+    console.error(`[WARNING] Gagal membaca store: ${error.message}`);
+  }
 
   // Membuat socket WhatsApp dengan mengikuti dokumentasi baileys terbaru
   const sock = makeWASocket({
@@ -68,7 +141,9 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
   sessions[sessionId] = {
     sock,
     store,
-    connected: false
+    connected: false,
+    createdAt: new Date(),
+    lastActive: new Date()
   };
 
   // Menangani QR code sesuai dengan dokumentasi terbaru
@@ -84,7 +159,7 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
         });
         qrCallback(qrCode);
       } catch (error) {
-        console.error('Error generating QR code:', error);
+        console.error('[ERROR] Gagal generate QR code:', error);
         qrCallback(qr); // Fallback to raw QR data
       }
     }
@@ -94,16 +169,25 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       
       if (shouldReconnect) {
-        console.log('Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
-        initializeWhatsApp(sessionId, qrCallback, connectionCallback);
+        console.log('[INFO] Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
+        // Set timeout untuk menghindari reconnect loop yang terlalu cepat
+        setTimeout(() => {
+          try {
+            initializeWhatsApp(sessionId, qrCallback, connectionCallback);
+          } catch (error) {
+            console.error(`[ERROR] Gagal reconnect: ${error.message}`);
+            connectionCallback('error', error.message);
+          }
+        }, config.WA_RECONNECT_INTERVAL);
       } else {
-        console.log('Koneksi ditutup karena logout');
+        console.log('[INFO] Koneksi ditutup karena logout');
         delete sessions[sessionId];
         connectionCallback('disconnected');
       }
     } else if (connection === 'open') {
-      console.log('Koneksi terbuka');
+      console.log('[INFO] Koneksi terbuka');
       sessions[sessionId].connected = true;
+      sessions[sessionId].lastActive = new Date();
       connectionCallback('connected');
     }
   });
@@ -125,21 +209,75 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
  * @param {function} connectionCallback - Callback yang dipanggil ketika status koneksi berubah
  */
 async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback) {
+  if (!sessionId) {
+    throw new Error('SessionID tidak dapat kosong');
+  }
+  
+  if (!phoneNumber) {
+    throw new Error('Nomor telepon tidak dapat kosong');
+  }
+  
+  if (typeof connectionCallback !== 'function') {
+    throw new Error('ConnectionCallback harus berupa fungsi');
+  }
+  
+  // Memastikan direktori sessions ada
+  ensureSessionsDirectory();
+  
   // Membuat folder untuk menyimpan autentikasi
-  const sessionFolder = path.join(config.SESSION_DIR, sessionId);
-  if (!fs.existsSync(sessionFolder)) {
-    fs.mkdirSync(sessionFolder, { recursive: true });
+  const sessionFolder = ensureSessionDirectory(sessionId);
+
+  // Menggunakan multi file auth state dengan error handling
+  let state, saveCreds;
+  try {
+    const authResult = await useMultiFileAuthState(sessionFolder);
+    state = authResult.state;
+    saveCreds = authResult.saveCreds;
+  } catch (error) {
+    console.error(`[ERROR] Gagal memuat auth state: ${error.message}`);
+    connectionCallback('error', `Gagal memuat auth state: ${error.message}`);
+    return null;
   }
 
-  // Menggunakan multi file auth state
-  const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
-
   // Mengambil versi terbaru Baileys
-  const { version, isLatest } = await fetchLatestBaileysVersion();
+  let version, isLatest;
+  try {
+    const versionInfo = await fetchLatestBaileysVersion();
+    version = versionInfo.version;
+    isLatest = versionInfo.isLatest;
+    console.log(`Menggunakan WA v${version.join('.')}, terbaru: ${isLatest}`);
+  } catch (error) {
+    console.error(`[ERROR] Gagal mendapatkan versi Baileys: ${error.message}`);
+    // Gunakan versi default untuk fallback
+    version = [2, 2311, 6];
+    console.log(`Menggunakan versi fallback WA v${version.join('.')}`);
+  }
   
   // Store untuk menyimpan pesan
   const store = makeInMemoryStore({});
-  store.readFromFile(path.join(sessionFolder, 'store.json'));
+  const storePath = path.join(sessionFolder, 'store.json');
+  
+  try {
+    if (fs.existsSync(storePath)) {
+      store.readFromFile(storePath);
+    }
+    
+    // Set interval untuk menyimpan store secara periodik
+    const storeInterval = setInterval(() => {
+      try {
+        store.writeToFile(storePath);
+      } catch (error) {
+        console.error(`[ERROR] Gagal menyimpan store: ${error.message}`);
+      }
+    }, 10000);
+    
+    // Cleanup interval pada process exit
+    process.on('exit', () => {
+      clearInterval(storeInterval);
+    });
+  } catch (error) {
+    console.error(`[WARNING] Gagal membaca store: ${error.message}`);
+  }
   
   // Membuat socket WhatsApp dengan mengikuti dokumentasi baileys terbaru
   const sock = makeWASocket({
@@ -165,7 +303,9 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
   sessions[sessionId] = {
     sock,
     store,
-    connected: false
+    connected: false,
+    createdAt: new Date(),
+    lastActive: new Date()
   };
 
   // Menangani status koneksi
@@ -177,16 +317,25 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       
       if (shouldReconnect) {
-        console.log('Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
-        initializeWhatsApp(sessionId, () => {}, connectionCallback);
+        console.log('[INFO] Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
+        // Set timeout untuk menghindari reconnect loop yang terlalu cepat
+        setTimeout(() => {
+          try {
+            initializeWhatsApp(sessionId, () => {}, connectionCallback);
+          } catch (error) {
+            console.error(`[ERROR] Gagal reconnect: ${error.message}`);
+            connectionCallback('error', error.message);
+          }
+        }, config.WA_RECONNECT_INTERVAL);
       } else {
-        console.log('Koneksi ditutup karena logout');
+        console.log('[INFO] Koneksi ditutup karena logout');
         delete sessions[sessionId];
         connectionCallback('disconnected');
       }
     } else if (connection === 'open') {
-      console.log('Koneksi terbuka');
+      console.log('[INFO] Koneksi terbuka');
       sessions[sessionId].connected = true;
+      sessions[sessionId].lastActive = new Date();
       connectionCallback('connected');
     }
   });
@@ -197,25 +346,36 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
   // Menyinkronkan pesan dengan store
   store.bind(sock.ev);
 
-  // Mendapatkan kode pairing
-  // Implementasi sesuai dengan dokumentasi baileys terbaru
+  // Mendapatkan kode pairing dengan implementasi sesuai dokumentasi terbaru
   try {
-    if (!phoneNumber.endsWith('@s.whatsapp.net')) {
-      // Format nomor telepon ke format yang benar
-      if (phoneNumber.startsWith('+')) {
-        phoneNumber = phoneNumber.substring(1);
+    // Format nomor telepon ke format yang benar
+    let formattedPhone = phoneNumber;
+    if (!formattedPhone.endsWith('@s.whatsapp.net')) {
+      // Hapus karakter non-numerik
+      formattedPhone = formattedPhone.replace(/[^0-9]/g, '');
+      
+      // Format berdasarkan konvensi internasional
+      if (formattedPhone.startsWith('+')) {
+        formattedPhone = formattedPhone.substring(1);
       }
-      if (phoneNumber.startsWith('0')) {
-        phoneNumber = '62' + phoneNumber.substring(1);
+      if (formattedPhone.startsWith('0')) {
+        formattedPhone = '62' + formattedPhone.substring(1);
+      }
+      
+      // Validasi panjang nomor telepon
+      if (formattedPhone.length < 10 || formattedPhone.length > 15) {
+        throw new Error('Format nomor telepon tidak valid');
       }
     }
     
     // Implementasi requestPairingCode sesuai dokumentasi terbaru
-    const code = await sock.requestPairingCode(phoneNumber);
+    console.log(`[INFO] Meminta kode pairing untuk: ${formattedPhone}`);
+    const code = await sock.requestPairingCode(formattedPhone);
+    console.log(`[INFO] Kode pairing diterima: ${code}`);
     connectionCallback('pairing_code', code);
   } catch (error) {
-    console.error('Error saat meminta kode pairing:', error);
-    connectionCallback('error', error.message);
+    console.error('[ERROR] Error saat meminta kode pairing:', error);
+    connectionCallback('error', error.message || 'Gagal mendapatkan kode pairing');
   }
 
   return sock;
@@ -235,7 +395,15 @@ function getWhatsAppSessions() {
  * @returns {Object|null} - Objek session WhatsApp atau null jika tidak ditemukan
  */
 function getWhatsAppSession(sessionId) {
-  return sessions[sessionId] || null;
+  if (!sessionId) return null;
+  const session = sessions[sessionId];
+  
+  if (session) {
+    // Update lastActive timestamp
+    session.lastActive = new Date();
+  }
+  
+  return session || null;
 }
 
 /**
@@ -266,7 +434,7 @@ async function getWhatsAppGroups(sessionId) {
       });
     }
   } catch (error) {
-    console.error('Error saat mengambil grup:', error);
+    console.error('[ERROR] Error saat mengambil grup:', error);
     throw error;
   }
 
@@ -291,7 +459,7 @@ async function getGroupInviteLink(sessionId, groupId) {
     const link = await sock.groupInviteCode(groupId);
     return `https://chat.whatsapp.com/${link}`;
   } catch (error) {
-    console.error('Error saat mengambil link grup:', error);
+    console.error('[ERROR] Error saat mengambil link grup:', error);
     throw error;
   }
 }
@@ -315,7 +483,7 @@ async function changeGroupName(sessionId, groupId, newName) {
     await sock.groupUpdateSubject(groupId, newName);
     return true;
   } catch (error) {
-    console.error('Error saat mengubah nama grup:', error);
+    console.error('[ERROR] Error saat mengubah nama grup:', error);
     throw error;
   }
 }
@@ -346,7 +514,7 @@ async function changeGroupSettings(sessionId, groupId, settings) {
     
     return true;
   } catch (error) {
-    console.error('Error saat mengubah pengaturan grup:', error);
+    console.error('[ERROR] Error saat mengubah pengaturan grup:', error);
     throw error;
   }
 }
@@ -370,7 +538,7 @@ async function promoteGroupParticipant(sessionId, groupId, participantId) {
     await sock.groupParticipantsUpdate(groupId, [participantId], 'promote');
     return true;
   } catch (error) {
-    console.error('Error saat mempromosikan peserta:', error);
+    console.error('[ERROR] Error saat mempromosikan peserta:', error);
     throw error;
   }
 }
@@ -394,10 +562,53 @@ async function removeGroupParticipants(sessionId, groupId, participantIds) {
     await sock.groupParticipantsUpdate(groupId, participantIds, 'remove');
     return true;
   } catch (error) {
-    console.error('Error saat mengeluarkan peserta:', error);
+    console.error('[ERROR] Error saat mengeluarkan peserta:', error);
     throw error;
   }
 }
+
+/**
+ * Membersihkan sesi yang tidak aktif
+ * @param {number} maxAgeMs - Usia maksimum session yang tidak aktif (dalam milidetik)
+ * @returns {number} - Jumlah session yang dibersihkan
+ */
+function cleanupInactiveSessions(maxAgeMs = 24 * 60 * 60 * 1000) {
+  const now = new Date();
+  let cleanedCount = 0;
+  
+  Object.keys(sessions).forEach(sessionId => {
+    const session = sessions[sessionId];
+    const lastActiveTime = session.lastActive || session.createdAt || new Date(0);
+    const age = now - lastActiveTime;
+    
+    if (age > maxAgeMs) {
+      // Membersihkan session yang sudah tidak aktif
+      try {
+        if (session.sock && typeof session.sock.close === 'function') {
+          session.sock.close();
+        }
+        delete sessions[sessionId];
+        cleanedCount++;
+      } catch (error) {
+        console.error(`[ERROR] Gagal membersihkan session ${sessionId}: ${error.message}`);
+      }
+    }
+  });
+  
+  return cleanedCount;
+}
+
+// Jalankan cleanup session secara periodik (setiap 1 jam)
+setInterval(() => {
+  try {
+    const cleanedCount = cleanupInactiveSessions();
+    if (cleanedCount > 0) {
+      console.log(`[INFO] Membersihkan ${cleanedCount} session tidak aktif`);
+    }
+  } catch (error) {
+    console.error('[ERROR] Gagal menjalankan cleanup session:', error);
+  }
+}, 60 * 60 * 1000);
 
 module.exports = {
   initializeWhatsApp,
@@ -409,5 +620,6 @@ module.exports = {
   changeGroupName,
   changeGroupSettings,
   promoteGroupParticipant,
-  removeGroupParticipants
+  removeGroupParticipants,
+  cleanupInactiveSessions
 };
