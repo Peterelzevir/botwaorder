@@ -15,6 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const qrcode = require('qrcode');
 const config = require('../config');
+const { tmpdir } = require('os');
 
 // Store untuk menyimpan semua session WhatsApp
 const sessions = {};
@@ -47,6 +48,36 @@ function ensureSessionDirectory(sessionId) {
   } catch (error) {
     console.error(`[ERROR] Gagal membuat direktori sesi untuk ${sessionId}: ${error.message}`);
     throw new Error(`Gagal membuat direktori sesi: ${error.message}`);
+  }
+}
+
+/**
+ * Fungsi untuk menghasilkan gambar QR code dan menyimpannya
+ * @param {string} qrData - Data QR code yang akan dikonversi menjadi gambar
+ * @returns {Promise<string>} - Path ke file gambar QR code
+ */
+async function generateQRCodeImage(qrData) {
+  try {
+    // Buat nama file unik dengan timestamp untuk menghindari cache
+    const fileName = `qrcode_${Date.now()}.png`;
+    const filePath = path.join(tmpdir(), fileName);
+    
+    // Buat QR code sebagai gambar PNG
+    await qrcode.toFile(filePath, qrData, {
+      errorCorrectionLevel: 'H',
+      type: 'png',
+      margin: 2,
+      scale: 8,
+      color: {
+        dark: '#000000', // Warna QR (hitam)
+        light: '#ffffff' // Warna background (putih)
+      }
+    });
+    
+    return filePath;
+  } catch (error) {
+    console.error('[ERROR] Gagal membuat gambar QR code:', error);
+    throw new Error(`Gagal membuat gambar QR code: ${error.message}`);
   }
 }
 
@@ -146,21 +177,30 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
     lastActive: new Date()
   };
 
-  // Menangani QR code sesuai dengan dokumentasi terbaru
+  // Menangani QR code dan koneksi
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      // Gunakan qrcode library untuk menghasilkan QR code sebagai string ASCII
+      // Generate QR code sebagai file gambar
       try {
-        const qrCode = await qrcode.toString(qr, {
+        // 1. Buat gambar QR code terlebih dahulu
+        const qrImagePath = await generateQRCodeImage(qr);
+        
+        // 2. Kirim jalur file gambar ke callback
+        qrCallback('image', qrImagePath);
+        
+        // Simpan salinan ASCII juga untuk fallback atau debug
+        const asciiQR = await qrcode.toString(qr, {
           type: 'terminal',
           small: true
         });
-        qrCallback(qrCode);
+        console.log('ASCII QR Code:', asciiQR);
       } catch (error) {
         console.error('[ERROR] Gagal generate QR code:', error);
-        qrCallback(qr); // Fallback to raw QR data
+        // Fallback ke mode teks jika terjadi error
+        const textQR = await qrcode.toString(qr, { type: 'utf8' });
+        qrCallback('text', textQR);
       }
     }
 
@@ -286,7 +326,7 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
     printQRInTerminal: false,
     auth: state,
     browser: ['WhatsApp Manager Bot', 'Chrome', '3.0.0'],
-    // Opsi tambahan sesuai dokumentasi
+    // Konfigurasi penting untuk pairing code
     mobile: false,
     getMessage: async (key) => {
       if (store) {
@@ -318,7 +358,6 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
       
       if (shouldReconnect) {
         console.log('[INFO] Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
-        // Set timeout untuk menghindari reconnect loop yang terlalu cepat
         setTimeout(() => {
           try {
             initializeWhatsApp(sessionId, () => {}, connectionCallback);
@@ -346,32 +385,28 @@ async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback
   // Menyinkronkan pesan dengan store
   store.bind(sock.ev);
 
-  // Mendapatkan kode pairing dengan implementasi sesuai dokumentasi terbaru
+  // Dapatkan kode pairing dengan nomor telepon
   try {
-    // Format nomor telepon ke format yang benar
-    let formattedPhone = phoneNumber;
-    if (!formattedPhone.endsWith('@s.whatsapp.net')) {
-      // Hapus karakter non-numerik
-      formattedPhone = formattedPhone.replace(/[^0-9]/g, '');
-      
-      // Format berdasarkan konvensi internasional
-      if (formattedPhone.startsWith('+')) {
-        formattedPhone = formattedPhone.substring(1);
-      }
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '62' + formattedPhone.substring(1);
-      }
-      
-      // Validasi panjang nomor telepon
-      if (formattedPhone.length < 10 || formattedPhone.length > 15) {
-        throw new Error('Format nomor telepon tidak valid');
-      }
+    // Format nomor telepon ke format yang benar (hapus semua karakter non-numerik)
+    let formattedPhone = phoneNumber.replace(/[^0-9]/g, '');
+    
+    // Pastikan format diawali dengan kode negara (tanpa +)
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '62' + formattedPhone.substring(1);
     }
     
-    // Implementasi requestPairingCode sesuai dokumentasi terbaru
+    // Validasi nomor telepon
+    if (formattedPhone.length < 10 || formattedPhone.length > 15) {
+      throw new Error('Format nomor telepon tidak valid');
+    }
+    
     console.log(`[INFO] Meminta kode pairing untuk: ${formattedPhone}`);
+    
+    // Implement requestPairingCode sesuai dokumentasi terbaru
     const code = await sock.requestPairingCode(formattedPhone);
     console.log(`[INFO] Kode pairing diterima: ${code}`);
+    
+    // Kirim kode pairing ke callback
     connectionCallback('pairing_code', code);
   } catch (error) {
     console.error('[ERROR] Error saat meminta kode pairing:', error);
