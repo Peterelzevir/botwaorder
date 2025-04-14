@@ -52,9 +52,6 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     else if (data === 'connect_qr') {
       await accountHandlers.handleConnectWithQR(bot, chatId, messageId, userStates);
     }
-    else if (data === 'connect_pairing') {
-      await accountHandlers.handleConnectWithPairing(bot, chatId, messageId, userStates);
-    }
     else if (data === 'cancel_add_account') {
       await accountHandlers.handleCancelAddAccount(bot, chatId, messageId, userStates);
     }
@@ -67,6 +64,10 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     else if (data.startsWith('view_groups:')) {
       const sessionId = data.split(':')[1];
       await groupHandlers.handleViewGroups(bot, chatId, messageId, sessionId);
+    }
+    else if (data.startsWith('get_all_links:')) {
+      const sessionId = data.split(':')[1];
+      await groupHandlers.handleGetAllGroupLinks(bot, chatId, messageId, sessionId);
     }
     else if (data.startsWith('group:')) {
       const [_, sessionId, groupId] = data.split(':');
@@ -123,8 +124,8 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     else {
       // Handle unknown callback data
       console.warn(`[WARNING] Unknown callback data: ${data}`);
-      await bot.sendMessage(chatId, `<b>⚠️ PERINGATAN</b>\n\nTombol atau fungsi ini tidak dikenali.`, {
-        parse_mode: 'HTML',
+      await bot.sendMessage(chatId, `❌ **PERINGATAN**\n\nTombol atau fungsi ini tidak dikenali.`, {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
@@ -138,10 +139,10 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     // Format error message safely
     const errorMessage = escapeHtml(error.message || 'Unknown error');
     
-    // Use HTML parse mode as it's safer than Markdown
+    // Gunakan Markdown parse mode di semua tempat untuk menjaga konsistensi dan menghindari masalah
     try {
-      await bot.sendMessage(chatId, `<b>❌ ERROR</b>\n\nTerjadi kesalahan saat memproses permintaan: ${errorMessage}`, {
-        parse_mode: 'HTML',
+      await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
+        parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
@@ -180,8 +181,8 @@ async function handleError(bot, chatId, error) {
   const errorMessage = escapeHtml(error.message || 'Unknown error');
   
   try {
-    await bot.sendMessage(chatId, `<b>❌ ERROR</b>\n\nTerjadi kesalahan: ${errorMessage}`, {
-      parse_mode: 'HTML',
+    await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
