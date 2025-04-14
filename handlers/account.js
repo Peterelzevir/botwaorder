@@ -2,7 +2,9 @@
  * Handler untuk manajemen akun WhatsApp
  */
 const fs = require('fs');
+const path = require('path');
 const { generateMainMenu } = require('./menu');
+const config = require('../config');
 const {
   initializeWhatsApp,
   getWhatsAppSessions,
@@ -339,11 +341,275 @@ async function handleSelectAccount(bot, chatId, messageId, sessionId) {
   });
 }
 
+/**
+ * Menangani pengaturan akun WhatsApp
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ */
+async function handleAccountSettings(bot, chatId, messageId, sessionId) {
+  const session = getWhatsAppSession(sessionId);
+  
+  if (!session || !session.connected) {
+    await bot.editMessageText('❌ *AKUN TIDAK TERHUBUNG*\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  await bot.editMessageText('⚙️ *PENGATURAN AKUN WHATSAPP*\n\nPilih pengaturan yang ingin diubah:', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔄 Logout', callback_data: `logout_account:${sessionId}` }],
+        [{ text: '❌ Hapus Akun dari Bot', callback_data: `delete_account:${sessionId}` }],
+        [{ text: '🔙 Kembali ke Detail Akun', callback_data: `account:${sessionId}` }]
+      ]
+    }
+  });
+}
+
+/**
+ * Menangani logout akun WhatsApp
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ */
+async function handleLogoutAccount(bot, chatId, messageId, sessionId) {
+  // Konfirmasi terlebih dahulu
+  await bot.editMessageText('⚠️ *LOGOUT AKUN*\n\nAnda akan logout dari akun WhatsApp ini. Apakah Anda yakin?\n\nPerhatian: Anda perlu scan QR code lagi untuk menggunakan akun ini.', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '✅ Ya, Logout', callback_data: `confirm_logout:${sessionId}` }],
+        [{ text: '❌ Batalkan', callback_data: `account:${sessionId}` }]
+      ]
+    }
+  });
+}
+
+/**
+ * Menangani hapus akun WhatsApp dari bot
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ */
+async function handleDeleteAccount(bot, chatId, messageId, sessionId) {
+  // Konfirmasi terlebih dahulu
+  await bot.editMessageText('⚠️ *HAPUS AKUN*\n\nAnda akan menghapus akun WhatsApp ini dari bot. Apakah Anda yakin?\n\nPerhatian: Semua data sesi akan dihapus dan Anda perlu menambahkan akun lagi untuk menggunakannya.', {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '✅ Ya, Hapus Akun', callback_data: `confirm_delete:${sessionId}` }],
+        [{ text: '❌ Batalkan', callback_data: `account:${sessionId}` }]
+      ]
+    }
+  });
+}
+
+/**
+ * Menangani konfirmasi logout akun WhatsApp
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ */
+async function handleConfirmLogout(bot, chatId, messageId, sessionId) {
+  const session = getWhatsAppSession(sessionId);
+  
+  if (!session) {
+    await bot.editMessageText('❌ *AKUN TIDAK DITEMUKAN*\n\nAkun WhatsApp yang Anda pilih tidak ditemukan.', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  try {
+    // Proses logout
+    await bot.editMessageText('⏳ *PROSES LOGOUT*\n\nSedang melakukan logout dari WhatsApp...', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown'
+    });
+
+    // Pastikan session.sock ada dan memiliki metode logout
+    if (session.sock && typeof session.sock.logout === 'function') {
+      try {
+        await session.sock.logout();
+        
+        // Hapus session dari daftar
+        delete getWhatsAppSessions()[sessionId];
+        
+        await bot.editMessageText('✅ *BERHASIL LOGOUT*\n\nAkun WhatsApp berhasil logout.', {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+            ]
+          }
+        });
+      } catch (error) {
+        console.error(`[ERROR] Gagal logout: ${error.message}`);
+        throw error;
+      }
+    } else {
+      // Alternatif bila metode logout tidak tersedia
+      // Hapus session dari daftar
+      delete getWhatsAppSessions()[sessionId];
+      
+      await bot.editMessageText('✅ *BERHASIL LOGOUT*\n\nAkun WhatsApp berhasil dihapus dari sesi aktif.', {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+          ]
+        }
+      });
+    }
+  } catch (error) {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat logout: ${error.message}`, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+  }
+}
+
+/**
+ * Menangani konfirmasi hapus akun WhatsApp
+ * @param {Object} bot - Instance bot Telegram
+ * @param {number} chatId - ID chat Telegram
+ * @param {number} messageId - ID pesan Telegram
+ * @param {string} sessionId - ID session WhatsApp
+ */
+async function handleConfirmDelete(bot, chatId, messageId, sessionId) {
+  const session = getWhatsAppSession(sessionId);
+  
+  if (!session) {
+    await bot.editMessageText('❌ *AKUN TIDAK DITEMUKAN*\n\nAkun WhatsApp yang Anda pilih tidak ditemukan.', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+    return;
+  }
+
+  try {
+    // Proses hapus akun
+    await bot.editMessageText('⏳ *PROSES HAPUS AKUN*\n\nSedang menghapus akun WhatsApp dari bot...', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown'
+    });
+
+    // Pastikan session.sock ada dan memiliki metode logout/close
+    if (session.sock) {
+      try {
+        // Coba logout jika metode tersedia
+        if (typeof session.sock.logout === 'function') {
+          await session.sock.logout();
+        } 
+        // Atau tutup koneksi jika metode tersedia
+        else if (typeof session.sock.close === 'function') {
+          await session.sock.close();
+        }
+      } catch (err) {
+        console.error(`[ERROR] Gagal menutup koneksi WhatsApp: ${err.message}`);
+        // Lanjutkan proses penghapusan meskipun logout/close gagal
+      }
+    }
+    
+    // Hapus session dari daftar
+    delete getWhatsAppSessions()[sessionId];
+    
+    // Hapus folder sesi jika ada
+    const sessionDir = path.join(config.SESSIONS_DIR, sessionId);
+    if (fs.existsSync(sessionDir)) {
+      try {
+        // Hapus semua file di dalam direktori
+        const files = fs.readdirSync(sessionDir);
+        for (const file of files) {
+          fs.unlinkSync(path.join(sessionDir, file));
+        }
+        // Hapus direktori
+        fs.rmdirSync(sessionDir);
+      } catch (err) {
+        console.error(`[ERROR] Gagal menghapus folder sesi: ${err.message}`);
+        // Lanjutkan meskipun penghapusan file gagal
+      }
+    }
+    
+    await bot.editMessageText('✅ *BERHASIL DIHAPUS*\n\nAkun WhatsApp berhasil dihapus dari bot.', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+  } catch (error) {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat menghapus akun: ${error.message}`, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+        ]
+      }
+    });
+  }
+}
+
 module.exports = {
   handleAddAccount,
   handleConnectWithQR,
   handleCancelAddAccount,
   handleManageAccounts,
   handleSelectAccount,
-  generateAccountMenu
+  generateAccountMenu,
+  handleAccountSettings,
+  handleLogoutAccount,
+  handleDeleteAccount,
+  handleConfirmLogout,
+  handleConfirmDelete
 };
