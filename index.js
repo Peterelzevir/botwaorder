@@ -86,12 +86,12 @@ bot.onText(/\/start/, async (msg) => {
     // Proses normal untuk user yang terautentikasi
     userStates[chatId] = { state: 'idle' };
     const welcomeMessage = `
-🤖 **WHATSAPP MANAGER BOT** 🤖
+🤖 *WHATSAPP MANAGER BOT* 🤖
 
 Selamat datang di Bot Manager WhatsApp!
 Bot ini memungkinkan Anda untuk mengelola akun WhatsApp Anda langsung dari Telegram.
 
-⚠️ **PERHATIAN** ⚠️
+⚠️ *PERHATIAN* ⚠️
 Anda harus terlebih dahulu menghubungkan akun WhatsApp sebelum menggunakan fitur lainnya.
 Silakan gunakan tombol di bawah untuk mulai.
 `;
@@ -109,7 +109,7 @@ Silakan gunakan tombol di bawah untuk mulai.
     
     // Send simplified error message to user
     try {
-      await bot.sendMessage(chatId, '❌ **ERROR**\n\nTerjadi kesalahan saat memulai bot. Silakan coba lagi.', {
+      await bot.sendMessage(chatId, '❌ *ERROR*\n\nTerjadi kesalahan saat memulai bot. Silakan coba lagi.', {
         parse_mode: 'Markdown'
       });
     } catch (msgError) {
@@ -144,7 +144,7 @@ bot.on('callback_query', async (callbackQuery) => {
       });
       
       // Send more detailed error message
-      await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
+      await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -169,7 +169,7 @@ bot.on('message', (msg) => {
   }
   
   // Jika tidak ada handler yang menangkap, berikan panduan
-  bot.sendMessage(chatId, "📌 **PANDUAN PENGGUNAAN**\n\nGunakan perintah /start untuk mulai menggunakan bot ini.", {
+  bot.sendMessage(chatId, "📌 *PANDUAN PENGGUNAAN*\n\nGunakan perintah /start untuk mulai menggunakan bot ini.", {
     parse_mode: 'Markdown'
   });
 });
