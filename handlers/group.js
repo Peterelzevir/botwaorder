@@ -23,7 +23,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
   const session = getWhatsAppSession(sessionId);
   
   if (!session || !session.connected) {
-    await bot.editMessageText('❌ **AKUN TIDAK TERHUBUNG**\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
+    await bot.editMessageText('❌ *AKUN TIDAK TERHUBUNG*\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -37,7 +37,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
   }
 
   try {
-    await bot.editMessageText('⏳ **MENGAMBIL DATA**\n\nSedang mengambil daftar grup...', {
+    await bot.editMessageText('⏳ *MENGAMBIL DATA*\n\nSedang mengambil daftar grup...', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown'
@@ -55,7 +55,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
     ]);
     
     if (!groups || groups.length === 0) {
-      await bot.editMessageText('⚠️ **TIDAK ADA GRUP**\n\nAnda tidak memiliki grup WhatsApp.', {
+      await bot.editMessageText('⚠️ *TIDAK ADA GRUP*\n\nAnda tidak memiliki grup WhatsApp.', {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: 'Markdown',
@@ -80,7 +80,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
 
     keyboard.push([{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]);
 
-    await bot.editMessageText(`📋 **DAFTAR GRUP**\n\nTotal: ${groups.length} grup${groups.length > maxGroups ? ` (menampilkan ${maxGroups} pertama)` : ''}\n\nPilih grup untuk mengelola:`, {
+    await bot.editMessageText(`📋 *DAFTAR GRUP*\n\nTotal: ${groups.length} grup${groups.length > maxGroups ? ` (menampilkan ${maxGroups} pertama)` : ''}\n\nPilih grup untuk mengelola:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -89,7 +89,7 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengambil daftar grup: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengambil daftar grup: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -113,7 +113,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
   const session = getWhatsAppSession(sessionId);
   
   if (!session || !session.connected) {
-    await bot.editMessageText('❌ **AKUN TIDAK TERHUBUNG**\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
+    await bot.editMessageText('❌ *AKUN TIDAK TERHUBUNG*\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -127,7 +127,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
   }
 
   try {
-    await bot.editMessageText('⏳ **MENGAMBIL DATA**\n\nSedang mengambil semua link grup. Ini mungkin memerlukan waktu beberapa saat...', {
+    await bot.editMessageText('⏳ *MENGAMBIL DATA*\n\nSedang mengambil semua link grup. Ini mungkin memerlukan waktu beberapa saat...', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown'
@@ -145,7 +145,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
     ]);
     
     if (!groupLinks || groupLinks.length === 0) {
-      await bot.editMessageText('⚠️ **TIDAK ADA GRUP**\n\nAnda tidak memiliki grup WhatsApp.', {
+      await bot.editMessageText('⚠️ *TIDAK ADA GRUP*\n\nAnda tidak memiliki grup WhatsApp.', {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: 'Markdown',
@@ -159,7 +159,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
     }
 
     // Buat pesan dengan daftar semua link grup
-    let message = `🔗 **DAFTAR LINK GRUP**\n\nTotal: ${groupLinks.length} grup\n\n`;
+    let message = `🔗 *DAFTAR LINK GRUP*\n\nTotal: ${groupLinks.length} grup\n\n`;
     
     // Format pesan dengan semua link grup
     const successGroups = groupLinks.filter(g => g.link !== null);
@@ -185,7 +185,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
     
     // Tampilkan pesan error untuk grup yang gagal (jika ada)
     if (failedGroups.length > 0 && message.length < 3800) {
-      message += "\n**GRUP DENGAN ERROR:**\n";
+      message += "\n*GRUP DENGAN ERROR:*\n";
       for (let i = 0; i < failedGroups.length; i++) {
         const group = failedGroups[i];
         const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
@@ -211,7 +211,7 @@ async function handleGetAllGroupLinks(bot, chatId, messageId, sessionId) {
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengambil link grup: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengambil link grup: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -236,7 +236,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
   const session = getWhatsAppSession(sessionId);
   
   if (!session || !session.connected) {
-    await bot.editMessageText('❌ **AKUN TIDAK TERHUBUNG**\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
+    await bot.editMessageText('❌ *AKUN TIDAK TERHUBUNG*\n\nAkun WhatsApp yang Anda pilih tidak terhubung.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -250,7 +250,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
   }
 
   try {
-    await bot.editMessageText('⏳ **MENGAMBIL DATA**\n\nSedang mengambil detail grup...', {
+    await bot.editMessageText('⏳ *MENGAMBIL DATA*\n\nSedang mengambil detail grup...', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown'
@@ -270,7 +270,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
     const group = groups.find(g => g.id === groupId);
     
     if (!group) {
-      await bot.editMessageText('❌ **GRUP TIDAK DITEMUKAN**\n\nGrup WhatsApp yang Anda pilih tidak ditemukan.', {
+      await bot.editMessageText('❌ *GRUP TIDAK DITEMUKAN*\n\nGrup WhatsApp yang Anda pilih tidak ditemukan.', {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: 'Markdown',
@@ -292,7 +292,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
       members = group.participants.length - admins;
     }
 
-    await bot.editMessageText(`👥 **DETAIL GRUP**\n\nNama: ${group.name}\nTotal Anggota: ${admins + members}\nAdmin: ${admins}\nMember: ${members}\n\nPilih tindakan:`, {
+    await bot.editMessageText(`👥 *DETAIL GRUP*\n\nNama: ${group.name}\nTotal Anggota: ${admins + members}\nAdmin: ${admins}\nMember: ${members}\n\nPilih tindakan:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -307,7 +307,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengambil detail grup: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengambil detail grup: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -330,7 +330,7 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
  */
 async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
   try {
-    await bot.editMessageText('⏳ **MENGAMBIL DATA**\n\nSedang mengambil link grup...', {
+    await bot.editMessageText('⏳ *MENGAMBIL DATA*\n\nSedang mengambil link grup...', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown'
@@ -347,7 +347,7 @@ async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
       timeoutPromise
     ]);
     
-    await bot.editMessageText(`🔗 **LINK GRUP**\n\n${link}\n\nLink berhasil diambil!`, {
+    await bot.editMessageText(`🔗 *LINK GRUP*\n\n${link}\n\nLink berhasil diambil!`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -359,7 +359,7 @@ async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengambil link grup: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengambil link grup: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -406,7 +406,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       groupId
     };
 
-    await bot.editMessageText(`✏️ **UBAH NAMA GRUP**\n\nNama Saat Ini: ${group.name}\n\nKirim nama baru untuk grup ini:`, {
+    await bot.editMessageText(`✏️ *UBAH NAMA GRUP*\n\nNama Saat Ini: ${group.name}\n\nKirim nama baru untuk grup ini:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -429,7 +429,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       const newName = msg.text.trim();
       
       if (newName.length < 1 || newName.length > 25) {
-        await bot.sendMessage(chatId, '❌ **NAMA TIDAK VALID**\n\nNama grup harus antara 1-25 karakter.', {
+        await bot.sendMessage(chatId, '❌ *NAMA TIDAK VALID*\n\nNama grup harus antara 1-25 karakter.', {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
@@ -440,7 +440,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
         return;
       }
 
-      const statusMsg = await bot.sendMessage(chatId, '⏳ **MENGUBAH NAMA**\n\nSedang mengubah nama grup...', {
+      const statusMsg = await bot.sendMessage(chatId, '⏳ *MENGUBAH NAMA*\n\nSedang mengubah nama grup...', {
         parse_mode: 'Markdown'
       });
 
@@ -458,7 +458,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
         
         userStates[chatId] = { state: 'idle' };
         
-        await bot.editMessageText('✅ **BERHASIL**\n\nNama grup berhasil diubah!', {
+        await bot.editMessageText('✅ *BERHASIL*\n\nNama grup berhasil diubah!', {
           chat_id: chatId,
           message_id: statusMsg.message_id,
           parse_mode: 'Markdown',
@@ -471,7 +471,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       } catch (error) {
         userStates[chatId] = { state: 'idle' };
         
-        await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengubah nama grup: ${error.message}`, {
+        await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengubah nama grup: ${error.message}`, {
           chat_id: chatId,
           message_id: statusMsg.message_id,
           parse_mode: 'Markdown',
@@ -484,7 +484,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -506,7 +506,7 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
  * @param {string} groupId - ID grup WhatsApp
  */
 async function handleGroupSettings(bot, chatId, messageId, sessionId, groupId) {
-  await bot.editMessageText('⚙️ **PENGATURAN GRUP**\n\nPilih pengaturan yang ingin diubah:', {
+  await bot.editMessageText('⚙️ *PENGATURAN GRUP*\n\nPilih pengaturan yang ingin diubah:', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -534,7 +534,7 @@ async function handleGroupSettings(bot, chatId, messageId, sessionId, groupId) {
  */
 async function handleToggleGroupSetting(bot, chatId, messageId, sessionId, groupId, setting, value) {
   try {
-    await bot.editMessageText('⏳ **MENGUBAH PENGATURAN**\n\nSedang mengubah pengaturan grup...', {
+    await bot.editMessageText('⏳ *MENGUBAH PENGATURAN*\n\nSedang mengubah pengaturan grup...', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown'
@@ -562,7 +562,7 @@ async function handleToggleGroupSetting(bot, chatId, messageId, sessionId, group
       ? 'dikunci (hanya admin)' 
       : 'dibuka (semua anggota)';
 
-    await bot.editMessageText(`✅ **BERHASIL**\n\n${settingName} berhasil ${settingStatus}!`, {
+    await bot.editMessageText(`✅ *BERHASIL*\n\n${settingName} berhasil ${settingStatus}!`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -574,7 +574,7 @@ async function handleToggleGroupSetting(bot, chatId, messageId, sessionId, group
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat mengubah pengaturan grup: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat mengubah pengaturan grup: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -596,7 +596,7 @@ async function handleToggleGroupSetting(bot, chatId, messageId, sessionId, group
  * @param {string} groupId - ID grup WhatsApp
  */
 async function handleManageMembers(bot, chatId, messageId, sessionId, groupId) {
-  await bot.editMessageText('👥 **KELOLA ANGGOTA**\n\nPilih tindakan untuk anggota grup:', {
+  await bot.editMessageText('👥 *KELOLA ANGGOTA*\n\nPilih tindakan untuk anggota grup:', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -627,7 +627,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
     groupId
   };
 
-  await bot.editMessageText('👑 **JADIKAN ADMIN**\n\nKirim nomor WhatsApp yang ingin dijadikan admin.\nFormat: 628xxxxxxxxxx (tanpa tanda + atau spasi)', {
+  await bot.editMessageText('👑 *JADIKAN ADMIN*\n\nKirim nomor WhatsApp yang ingin dijadikan admin.\nFormat: 628xxxxxxxxxx (tanpa tanda + atau spasi)', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -651,7 +651,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
     
     // Validasi format nomor telepon
     if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
-      await bot.sendMessage(chatId, '❌ **FORMAT SALAH**\n\nFormat nomor telepon tidak valid. Gunakan format internasional tanpa tanda + (contoh: 628123456789).', {
+      await bot.sendMessage(chatId, '❌ *FORMAT SALAH*\n\nFormat nomor telepon tidak valid. Gunakan format internasional tanpa tanda + (contoh: 628123456789).', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -662,7 +662,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
       return;
     }
 
-    const statusMsg = await bot.sendMessage(chatId, '⏳ **MENJADIKAN ADMIN**\n\nSedang menjadikan anggota sebagai admin...', {
+    const statusMsg = await bot.sendMessage(chatId, '⏳ *MENJADIKAN ADMIN*\n\nSedang menjadikan anggota sebagai admin...', {
       parse_mode: 'Markdown'
     });
 
@@ -683,7 +683,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
       
       userStates[chatId] = { state: 'idle' };
       
-      await bot.editMessageText('✅ **BERHASIL**\n\nAnggota berhasil dijadikan admin!', {
+      await bot.editMessageText('✅ *BERHASIL*\n\nAnggota berhasil dijadikan admin!', {
         chat_id: chatId,
         message_id: statusMsg.message_id,
         parse_mode: 'Markdown',
@@ -696,7 +696,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
     } catch (error) {
       userStates[chatId] = { state: 'idle' };
       
-      await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+      await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
         chat_id: chatId,
         message_id: statusMsg.message_id,
         parse_mode: 'Markdown',
@@ -726,7 +726,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
     groupId
   };
 
-  await bot.editMessageText('🚫 **KICK ANGGOTA**\n\nKirim nomor WhatsApp yang ingin di-kick.\nFormat: 628xxxxxxxxxx (tanpa tanda + atau spasi)', {
+  await bot.editMessageText('🚫 *KICK ANGGOTA*\n\nKirim nomor WhatsApp yang ingin di-kick.\nFormat: 628xxxxxxxxxx (tanpa tanda + atau spasi)', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -750,7 +750,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
     
     // Validasi format nomor telepon
     if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
-      await bot.sendMessage(chatId, '❌ **FORMAT SALAH**\n\nFormat nomor telepon tidak valid. Gunakan format internasional tanpa tanda + (contoh: 628123456789).', {
+      await bot.sendMessage(chatId, '❌ *FORMAT SALAH*\n\nFormat nomor telepon tidak valid. Gunakan format internasional tanpa tanda + (contoh: 628123456789).', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -761,7 +761,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
       return;
     }
 
-    const statusMsg = await bot.sendMessage(chatId, '⏳ **MENGELUARKAN ANGGOTA**\n\nSedang mengeluarkan anggota dari grup...', {
+    const statusMsg = await bot.sendMessage(chatId, '⏳ *MENGELUARKAN ANGGOTA*\n\nSedang mengeluarkan anggota dari grup...', {
       parse_mode: 'Markdown'
     });
 
@@ -782,7 +782,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
       
       userStates[chatId] = { state: 'idle' };
       
-      await bot.editMessageText('✅ **BERHASIL**\n\nAnggota berhasil dikeluarkan dari grup!', {
+      await bot.editMessageText('✅ *BERHASIL*\n\nAnggota berhasil dikeluarkan dari grup!', {
         chat_id: chatId,
         message_id: statusMsg.message_id,
         parse_mode: 'Markdown',
@@ -795,7 +795,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
     } catch (error) {
       userStates[chatId] = { state: 'idle' };
       
-      await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+      await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
         chat_id: chatId,
         message_id: statusMsg.message_id,
         parse_mode: 'Markdown',
@@ -820,7 +820,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
 async function handleKickAllMembers(bot, chatId, messageId, sessionId, groupId) {
   try {
     // Konfirmasi terlebih dahulu
-    await bot.editMessageText('⚠️ **PERINGATAN**\n\nAnda akan mengeluarkan SEMUA anggota dari grup ini (kecuali admin).\n\nApakah Anda yakin?', {
+    await bot.editMessageText('⚠️ *PERINGATAN*\n\nAnda akan mengeluarkan SEMUA anggota dari grup ini (kecuali admin).\n\nApakah Anda yakin?', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -832,7 +832,7 @@ async function handleKickAllMembers(bot, chatId, messageId, sessionId, groupId) 
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -854,7 +854,7 @@ async function handleKickAllMembers(bot, chatId, messageId, sessionId, groupId) 
  * @param {string} groupId - ID grup WhatsApp
  */
 async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, groupId) {
-  await bot.editMessageText('⏳ **MENGELUARKAN SEMUA ANGGOTA**\n\nSedang mengeluarkan semua anggota dari grup. Ini mungkin memerlukan waktu beberapa saat...', {
+  await bot.editMessageText('⏳ *MENGELUARKAN SEMUA ANGGOTA*\n\nSedang mengeluarkan semua anggota dari grup. Ini mungkin memerlukan waktu beberapa saat...', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown'
@@ -888,7 +888,7 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
       .map(p => p.id);
 
     if (nonAdminParticipants.length === 0) {
-      await bot.editMessageText('⚠️ **TIDAK ADA ANGGOTA**\n\nTidak ada anggota non-admin yang dapat dikeluarkan.', {
+      await bot.editMessageText('⚠️ *TIDAK ADA ANGGOTA*\n\nTidak ada anggota non-admin yang dapat dikeluarkan.', {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: 'Markdown',
@@ -923,7 +923,7 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
         
         // Update status
         if (i + batchSize < nonAdminParticipants.length) {
-          await bot.editMessageText(`⏳ **PROSES MENGELUARKAN ANGGOTA**\n\nBerhasil: ${successCount}/${nonAdminParticipants.length} anggota...\nSedang melanjutkan proses...`, {
+          await bot.editMessageText(`⏳ *PROSES MENGELUARKAN ANGGOTA*\n\nBerhasil: ${successCount}/${nonAdminParticipants.length} anggota...\nSedang melanjutkan proses...`, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown'
@@ -938,7 +938,7 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    await bot.editMessageText(`✅ **BERHASIL**\n\n${successCount} dari ${nonAdminParticipants.length} anggota berhasil dikeluarkan dari grup!`, {
+    await bot.editMessageText(`✅ *BERHASIL*\n\n${successCount} dari ${nonAdminParticipants.length} anggota berhasil dikeluarkan dari grup!`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -949,7 +949,7 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
       }
     });
   } catch (error) {
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
