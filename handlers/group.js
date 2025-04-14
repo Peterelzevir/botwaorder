@@ -42,9 +42,18 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
       parse_mode: 'Markdown'
     });
 
-    const groups = await getWhatsAppGroups(sessionId);
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout getting groups')), 30000)
+    );
     
-    if (groups.length === 0) {
+    // Race dengan timeout
+    const groups = await Promise.race([
+      getWhatsAppGroups(sessionId),
+      timeoutPromise
+    ]);
+    
+    if (!groups || groups.length === 0) {
       await bot.editMessageText('⚠️ *TIDAK ADA GRUP*\n\nAnda tidak memiliki grup WhatsApp.', {
         chat_id: chatId,
         message_id: messageId,
@@ -58,13 +67,19 @@ async function handleViewGroups(bot, chatId, messageId, sessionId) {
       return;
     }
 
-    const keyboard = groups.map(group => {
-      return [{ text: `👥 ${group.name}`, callback_data: `group:${sessionId}:${group.id}` }];
+    // Batasi jumlah grup yang ditampilkan untuk mencegah keyboard terlalu besar
+    const maxGroups = 20;
+    const limitedGroups = groups.slice(0, maxGroups);
+    
+    const keyboard = limitedGroups.map(group => {
+      // Batasi panjang nama grup untuk mencegah keyboard terlalu lebar
+      const displayName = group.name.length > 25 ? group.name.substring(0, 22) + '...' : group.name;
+      return [{ text: `👥 ${displayName}`, callback_data: `group:${sessionId}:${group.id}` }];
     });
 
     keyboard.push([{ text: '🔙 Kembali ke Akun', callback_data: `back_to_account:${sessionId}` }]);
 
-    await bot.editMessageText(`📋 *DAFTAR GRUP*\n\nTotal: ${groups.length} grup\n\nPilih grup untuk mengelola:`, {
+    await bot.editMessageText(`📋 *DAFTAR GRUP*\n\nTotal: ${groups.length} grup${groups.length > maxGroups ? ` (menampilkan ${maxGroups} pertama)` : ''}\n\nPilih grup untuk mengelola:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -112,7 +127,23 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
   }
 
   try {
-    const groups = await getWhatsAppGroups(sessionId);
+    await bot.editMessageText('⏳ *MENGAMBIL DATA*\n\nSedang mengambil detail grup...', {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown'
+    });
+
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout getting groups')), 30000)
+    );
+    
+    // Race dengan timeout
+    const groups = await Promise.race([
+      getWhatsAppGroups(sessionId),
+      timeoutPromise
+    ]);
+    
     const group = groups.find(g => g.id === groupId);
     
     if (!group) {
@@ -129,11 +160,16 @@ async function handleSelectGroup(bot, chatId, messageId, sessionId, groupId) {
       return;
     }
 
-    // Hitung jumlah admin dan member
-    const admins = group.participants.filter(p => p.isAdmin).length;
-    const members = group.participants.length - admins;
+    // Hitung jumlah admin dan member dengan penanganan error
+    let admins = 0;
+    let members = 0;
+    
+    if (Array.isArray(group.participants)) {
+      admins = group.participants.filter(p => p.isAdmin).length;
+      members = group.participants.length - admins;
+    }
 
-    await bot.editMessageText(`👥 *DETAIL GRUP*\n\nNama: ${group.name}\nTotal Anggota: ${group.participants.length}\nAdmin: ${admins}\nMember: ${members}\n\nPilih tindakan:`, {
+    await bot.editMessageText(`👥 *DETAIL GRUP*\n\nNama: ${group.name}\nTotal Anggota: ${admins + members}\nAdmin: ${admins}\nMember: ${members}\n\nPilih tindakan:`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -177,7 +213,16 @@ async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
       parse_mode: 'Markdown'
     });
 
-    const link = await getGroupInviteLink(sessionId, groupId);
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout getting group link')), 20000)
+    );
+    
+    // Race dengan timeout
+    const link = await Promise.race([
+      getGroupInviteLink(sessionId, groupId),
+      timeoutPromise
+    ]);
     
     await bot.editMessageText(`🔗 *LINK GRUP*\n\n${link}\n\nLink berhasil diambil!`, {
       chat_id: chatId,
@@ -215,7 +260,17 @@ async function handleGetGroupLink(bot, chatId, messageId, sessionId, groupId) {
  */
 async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, userStates) {
   try {
-    const groups = await getWhatsAppGroups(sessionId);
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout getting groups')), 30000)
+    );
+    
+    // Race dengan timeout
+    const groups = await Promise.race([
+      getWhatsAppGroups(sessionId),
+      timeoutPromise
+    ]);
+    
     const group = groups.find(g => g.id === groupId);
     
     if (!group) {
@@ -267,7 +322,17 @@ async function handleRenameGroup(bot, chatId, messageId, sessionId, groupId, use
       });
 
       try {
-        await changeGroupName(sessionId, groupId, newName);
+        // Tambahkan timeout untuk mencegah hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout changing group name')), 20000)
+        );
+        
+        // Race dengan timeout
+        await Promise.race([
+          changeGroupName(sessionId, groupId, newName),
+          timeoutPromise
+        ]);
+        
         userStates[chatId] = { state: 'idle' };
         
         await bot.editMessageText('✅ *BERHASIL*\n\nNama grup berhasil diubah!', {
@@ -353,15 +418,24 @@ async function handleToggleGroupSetting(bot, chatId, messageId, sessionId, group
     });
 
     const settings = {};
-    settings[setting] = value;
+    settings[setting] = value === true || value === 'true';
 
-    await changeGroupSettings(sessionId, groupId, settings);
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout changing group settings')), 20000)
+    );
+    
+    // Race dengan timeout
+    await Promise.race([
+      changeGroupSettings(sessionId, groupId, settings),
+      timeoutPromise
+    ]);
     
     const settingName = setting === 'announce' 
       ? 'Pengaturan Pesan' 
       : 'Pengaturan Info Grup';
     
-    const settingStatus = value 
+    const settingStatus = settings[setting]
       ? 'dikunci (hanya admin)' 
       : 'dibuka (semua anggota)';
 
@@ -450,7 +524,7 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
       return;
     }
 
-    const phoneNumber = msg.text.trim();
+    const phoneNumber = msg.text.trim().replace(/\D/g, '');
     
     // Validasi format nomor telepon
     if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
@@ -473,7 +547,17 @@ async function handlePromoteMember(bot, chatId, messageId, sessionId, groupId, u
       // Format nomor ke format JID WhatsApp
       const participantId = `${phoneNumber}@s.whatsapp.net`;
       
-      await promoteGroupParticipant(sessionId, groupId, participantId);
+      // Tambahkan timeout untuk mencegah hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout promoting member')), 20000)
+      );
+      
+      // Race dengan timeout
+      await Promise.race([
+        promoteGroupParticipant(sessionId, groupId, participantId),
+        timeoutPromise
+      ]);
+      
       userStates[chatId] = { state: 'idle' };
       
       await bot.editMessageText('✅ *BERHASIL*\n\nAnggota berhasil dijadikan admin!', {
@@ -539,7 +623,7 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
       return;
     }
 
-    const phoneNumber = msg.text.trim();
+    const phoneNumber = msg.text.trim().replace(/\D/g, '');
     
     // Validasi format nomor telepon
     if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
@@ -562,7 +646,17 @@ async function handleKickMember(bot, chatId, messageId, sessionId, groupId, user
       // Format nomor ke format JID WhatsApp
       const participantId = `${phoneNumber}@s.whatsapp.net`;
       
-      await removeGroupParticipants(sessionId, groupId, [participantId]);
+      // Tambahkan timeout untuk mencegah hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout removing member')), 20000)
+      );
+      
+      // Race dengan timeout
+      await Promise.race([
+        removeGroupParticipants(sessionId, groupId, [participantId]),
+        timeoutPromise
+      ]);
+      
       userStates[chatId] = { state: 'idle' };
       
       await bot.editMessageText('✅ *BERHASIL*\n\nAnggota berhasil dikeluarkan dari grup!', {
@@ -644,7 +738,17 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
   });
 
   try {
-    const groups = await getWhatsAppGroups(sessionId);
+    // Tambahkan timeout untuk mencegah hanging
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout getting groups')), 30000)
+    );
+    
+    // Race dengan timeout
+    const groups = await Promise.race([
+      getWhatsAppGroups(sessionId),
+      timeoutPromise
+    ]);
+    
     const group = groups.find(g => g.id === groupId);
     
     if (!group) {
@@ -652,6 +756,10 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
     }
 
     // Filter hanya anggota non-admin
+    if (!Array.isArray(group.participants)) {
+      throw new Error('Data anggota grup tidak valid');
+    }
+    
     const nonAdminParticipants = group.participants
       .filter(p => !p.isAdmin)
       .map(p => p.id);
@@ -672,15 +780,42 @@ async function handleConfirmKickAllMembers(bot, chatId, messageId, sessionId, gr
 
     // Mengeluarkan anggota dalam batch untuk menghindari rate limit
     const batchSize = 5;
+    let successCount = 0;
+    
     for (let i = 0; i < nonAdminParticipants.length; i += batchSize) {
       const batch = nonAdminParticipants.slice(i, i + batchSize);
-      await removeGroupParticipants(sessionId, groupId, batch);
+      try {
+        // Tambahkan timeout untuk mencegah hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout removing members')), 10000)
+        );
+        
+        // Race dengan timeout
+        await Promise.race([
+          removeGroupParticipants(sessionId, groupId, batch),
+          timeoutPromise
+        ]);
+        
+        successCount += batch.length;
+        
+        // Update status
+        if (i + batchSize < nonAdminParticipants.length) {
+          await bot.editMessageText(`⏳ *PROSES MENGELUARKAN ANGGOTA*\n\nBerhasil: ${successCount}/${nonAdminParticipants.length} anggota...\nSedang melanjutkan proses...`, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown'
+          });
+        }
+      } catch (error) {
+        console.error(`[ERROR] Gagal mengeluarkan batch anggota: ${error.message}`);
+        // Lanjutkan ke batch berikutnya meskipun ada error
+      }
       
       // Berikan waktu untuk menghindari rate limit
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    await bot.editMessageText(`✅ *BERHASIL*\n\n${nonAdminParticipants.length} anggota berhasil dikeluarkan dari grup!`, {
+    await bot.editMessageText(`✅ *BERHASIL*\n\n${successCount} dari ${nonAdminParticipants.length} anggota berhasil dikeluarkan dari grup!`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
