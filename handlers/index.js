@@ -124,7 +124,7 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     else {
       // Handle unknown callback data
       console.warn(`[WARNING] Unknown callback data: ${data}`);
-      await bot.sendMessage(chatId, `❌ **PERINGATAN**\n\nTombol atau fungsi ini tidak dikenali.`, {
+      await bot.sendMessage(chatId, `❌ *PERINGATAN*\n\nTombol atau fungsi ini tidak dikenali.`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -141,7 +141,7 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
     
     // Gunakan Markdown parse mode di semua tempat untuk menjaga konsistensi dan menghindari masalah
     try {
-      await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
+      await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -181,7 +181,7 @@ async function handleError(bot, chatId, error) {
   const errorMessage = escapeHtml(error.message || 'Unknown error');
   
   try {
-    await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan: ${error.message}`, {
+    await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan: ${error.message}`, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
