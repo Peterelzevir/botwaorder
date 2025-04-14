@@ -1,51 +1,62 @@
 /**
- * Middleware untuk memeriksa apakah pengguna adalah admin bot
+ * Modul Validasi Admin untuk Telegram Bot
+ * Menyediakan fungsi-fungsi untuk memvalidasi hak akses admin pada bot
  */
 const config = require('../config');
 
 /**
- * Factory function untuk membuat middleware admin
- * @param {Object} bot - Instance bot Telegram
- * @returns {Function} - Middleware function
+ * Factory function untuk membuat service validasi admin
+ * @param {TelegramBot} bot - Instance dari bot Telegram
+ * @returns {Object} Objek yang berisi fungsi-fungsi validasi admin
  */
-function createAdminMiddleware(bot) {
-  /**
-   * Middleware untuk memeriksa apakah pengguna adalah admin bot
-   * @param {Object} msg - Objek pesan Telegram
-   * @param {Function} next - Fungsi next untuk melanjutkan eksekusi
-   */
-  return function adminMiddleware(msg, next) {
-    const admins = config.ADMIN_USER_IDS;
+function createAdminService(bot) {
+  return {
+    /**
+     * Memeriksa apakah user ID tertentu memiliki hak admin
+     * @param {number} userId - ID Telegram user yang akan diperiksa
+     * @returns {boolean} Status admin dari user
+     */
+    isAdmin: function(userId) {
+      // Menggunakan array ADMIN_IDS dari config untuk memvalidasi
+      return Array.isArray(config.ADMIN_IDS) && config.ADMIN_IDS.includes(userId);
+    },
     
-    // Jika pesan dari callback query
-    if (msg.callback_query) {
-      const userId = msg.callback_query.from.id;
-      if (admins.includes(userId)) {
-        return next();
-      } else {
-        // Kirim pesan error dan jangan lanjutkan
-        bot.answerCallbackQuery(
-          msg.callback_query.id,
-          { text: '⛔ Anda tidak memiliki izin untuk menggunakan bot ini!' }
-        );
-        return;
+    /**
+     * Memvalidasi dan memberi notifikasi jika user bukan admin
+     * @param {number} userId - ID Telegram user yang akan diperiksa
+     * @param {number} chatId - ID chat untuk mengirim pesan penolakan
+     * @returns {Promise<boolean>} Status validasi
+     */
+    validateAdmin: async function(userId, chatId) {
+      if (this.isAdmin(userId)) {
+        return true;
       }
-    }
+      
+      // Kirim pesan penolakan jika user bukan admin
+      if (chatId) {
+        await bot.sendMessage(chatId, 
+          "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.");
+      }
+      return false;
+    },
     
-    // Jika pesan biasa
-    const userId = msg.from.id;
-    if (admins.includes(userId)) {
-      return next();
-    } else {
-      // Kirim pesan error
-      bot.sendMessage(
-        msg.chat.id,
-        '⛔ *AKSES DITOLAK*\n\nAnda tidak memiliki izin untuk menggunakan bot ini!',
-        { parse_mode: 'Markdown' }
-      );
-      return;
+    /**
+     * Higher-order function untuk membungkus handler dengan validasi admin
+     * @param {Function} handler - Function handler yang akan dibungkus
+     * @returns {Function} Handler yang sudah dibungkus dengan validasi admin
+     */
+    withAdminCheck: function(handler) {
+      return async (msg, ...args) => {
+        const userId = msg.from ? msg.from.id : null;
+        const chatId = msg.chat ? msg.chat.id : null;
+        
+        // Proses hanya jika validasi admin berhasil
+        if (await this.validateAdmin(userId, chatId)) {
+          return handler(msg, ...args);
+        }
+      };
     }
   };
 }
 
-module.exports = createAdminMiddleware;
+module.exports = createAdminService;
