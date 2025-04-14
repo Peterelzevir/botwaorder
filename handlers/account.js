@@ -1,6 +1,7 @@
 /**
  * Handler untuk manajemen akun WhatsApp
  */
+const fs = require('fs');
 const { generateMainMenu } = require('./menu');
 const {
   initializeWhatsApp,
@@ -62,7 +63,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
     sessionId
   };
 
-  await bot.editMessageText('⏳ *MENGHUBUNGKAN KE WHATSAPP*\n\nMempersiapkan koneksi. QR code akan muncul dalam beberapa saat...', {
+  const statusMessage = await bot.editMessageText('⏳ *MENGHUBUNGKAN KE WHATSAPP*\n\nMempersiapkan koneksi. QR code akan muncul dalam beberapa saat...', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown'
@@ -72,23 +73,83 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
     // Inisialisasi WhatsApp dengan callback untuk QR dan status koneksi
     initializeWhatsApp(
       sessionId,
-      // QR callback
-      async (qr) => {
-        // Mengirim QR code ke user
-        await bot.editMessageText('📲 *SCAN QR CODE*\n\nScan QR code berikut dengan WhatsApp di ponsel Anda:\n\n```' + qr + '```\n\nQR code akan kedaluwarsa dalam 20 detik.', {
-          chat_id: chatId,
-          message_id: messageId,
-          parse_mode: 'Markdown'
-        });
+      // QR callback dengan dukungan gambar
+      async (type, data) => {
+        if (type === 'image') {
+          try {
+            // Kirim QR code sebagai gambar
+            const qrBuffer = fs.readFileSync(data);
+            
+            // Hapus pesan status sebelumnya
+            try {
+              await bot.deleteMessage(chatId, statusMessage.message_id);
+            } catch (err) {
+              console.error('[ERROR] Gagal menghapus pesan lama:', err);
+            }
+            
+            // Kirim gambar QR code dengan caption
+            const msg = await bot.sendPhoto(chatId, qrBuffer, {
+              caption: '📲 *SCAN QR CODE*\n\nScan QR code ini dengan WhatsApp di ponsel Anda.\nBuka WhatsApp > Menu > Perangkat Tertaut > Tautkan Perangkat',
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❌ Batal', callback_data: 'cancel_add_account' }]
+                ]
+              }
+            });
+            
+            // Simpan ID pesan baru untuk pengelolaan state
+            userStates[chatId].qrMessageId = msg.message_id;
+            
+            // Hapus file QR sementara setelah dikirim
+            try {
+              fs.unlinkSync(data);
+            } catch (err) {
+              console.error('[ERROR] Gagal menghapus file QR:', err);
+            }
+          } catch (error) {
+            console.error('[ERROR] Gagal mengirim QR code sebagai gambar:', error);
+            // Fallback ke text mode jika gagal
+            await bot.sendMessage(chatId, '❌ *GAGAL MENGIRIM QR CODE SEBAGAI GAMBAR*\n\nTerjadi kesalahan teknis. Silakan coba lagi.', {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🔄 Coba Lagi', callback_data: 'connect_qr' }],
+                  [{ text: '❌ Batal', callback_data: 'cancel_add_account' }]
+                ]
+              }
+            });
+          }
+        } else {
+          // Fallback ke QR code teks jika gambar gagal
+          await bot.editMessageText('📲 *SCAN QR CODE*\n\nScan QR code berikut dengan WhatsApp di ponsel Anda:\n\n```' + data + '```\n\nQR code akan kedaluwarsa dalam 20 detik.', {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '❌ Batal', callback_data: 'cancel_add_account' }]
+              ]
+            }
+          });
+        }
       },
       // Connection callback
-      async (status) => {
+      async (status, data) => {
         if (status === 'connected') {
           userStates[chatId] = { state: 'idle' };
           
-          await bot.editMessageText('✅ *BERHASIL TERHUBUNG*\n\nAkun WhatsApp berhasil terhubung! Anda sekarang dapat menggunakan fitur-fitur bot.', {
-            chat_id: chatId,
-            message_id: messageId,
+          // Hapus pesan QR code jika masih ada
+          if (userStates[chatId]?.qrMessageId) {
+            try {
+              await bot.deleteMessage(chatId, userStates[chatId].qrMessageId);
+            } catch (err) {
+              console.error('[ERROR] Gagal menghapus pesan QR:', err);
+            }
+          }
+          
+          // Kirim pesan sukses
+          await bot.sendMessage(chatId, '✅ *BERHASIL TERHUBUNG*\n\nAkun WhatsApp berhasil terhubung! Anda sekarang dapat menggunakan fitur-fitur bot.', {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -100,9 +161,16 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
         } else if (status === 'disconnected') {
           userStates[chatId] = { state: 'idle' };
           
-          await bot.editMessageText('❌ *KONEKSI TERPUTUS*\n\nKoneksi WhatsApp terputus. Silakan coba lagi.', {
-            chat_id: chatId,
-            message_id: messageId,
+          // Kirim pesan error
+          await bot.sendMessage(chatId, '❌ *KONEKSI TERPUTUS*\n\nKoneksi WhatsApp terputus. Silakan coba lagi.', {
+            parse_mode: 'Markdown',
+            reply_markup: generateMainMenu()
+          });
+        } else if (status === 'error') {
+          userStates[chatId] = { state: 'idle' };
+          
+          // Kirim pesan error dengan detail
+          await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan: ${data || 'Unknown error'}`, {
             parse_mode: 'Markdown',
             reply_markup: generateMainMenu()
           });
@@ -153,13 +221,13 @@ async function handleConnectWithPairing(bot, chatId, messageId, userStates) {
     const phoneNumber = msg.text.trim();
     
     // Validasi format nomor telepon
-    if (!/^[0-9]{10,15}$/.test(phoneNumber)) {
+    if (!/^[0-9]{10,15}$/.test(phoneNumber.replace(/[^0-9]/g, ''))) {
       await bot.sendMessage(chatId, '❌ *FORMAT SALAH*\n\nFormat nomor telepon tidak valid. Gunakan format internasional tanpa tanda + (contoh: 628123456789).', {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
             [{ text: '🔄 Coba Lagi', callback_data: 'connect_pairing' }],
-            [{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]
+            [{ text: '❌ Batal', callback_data: 'back_to_main' }]
           ]
         }
       });
@@ -172,12 +240,24 @@ async function handleConnectWithPairing(bot, chatId, messageId, userStates) {
       sessionId
     };
 
+    // Hapus pesan nomor telepon untuk keamanan
+    try {
+      await bot.deleteMessage(chatId, msg.message_id);
+    } catch (err) {
+      console.error('[ERROR] Gagal menghapus pesan nomor telepon:', err);
+    }
+
     const statusMsg = await bot.sendMessage(chatId, '⏳ *MENGHUBUNGKAN KE WHATSAPP*\n\nMempersiapkan koneksi dengan pairing code...', {
-      parse_mode: 'Markdown'
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '❌ Batal', callback_data: 'cancel_add_account' }]
+        ]
+      }
     });
 
     try {
-      // Koneksi dengan pairing code
+      // Koneksi dengan pairing code menggunakan implementasi terbaru
       connectWithPairingCode(
         sessionId, 
         phoneNumber,
@@ -186,7 +266,12 @@ async function handleConnectWithPairing(bot, chatId, messageId, userStates) {
             await bot.editMessageText(`📲 *KODE PAIRING*\n\nMasukkan kode ini di WhatsApp Anda:\n\n*${data}*\n\nBuka WhatsApp > Menu > Perangkat Tertaut > Tautkan Perangkat > Masukkan kode`, {
               chat_id: chatId,
               message_id: statusMsg.message_id,
-              parse_mode: 'Markdown'
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❌ Batal', callback_data: 'cancel_add_account' }]
+                ]
+              }
             });
           } 
           else if (status === 'connected') {
