@@ -35,7 +35,9 @@ function createAdminService(bot) {
       // Kirim pesan penolakan jika user bukan admin
       if (chatId) {
         await bot.sendMessage(chatId, 
-          "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.");
+          "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.", {
+            parse_mode: 'Markdown'
+          });
       }
       return false;
     },
