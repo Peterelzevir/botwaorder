@@ -22,7 +22,7 @@ function generateMainMenu() {
  * @param {number} messageId - ID pesan Telegram
  */
 async function handleBackToMain(bot, chatId, messageId) {
-  await bot.editMessageText('🤖 *WHATSAPP MANAGER BOT* 🤖\n\nSelamat datang di Bot Manager WhatsApp!\nBot ini memungkinkan Anda untuk mengelola akun WhatsApp Anda langsung dari Telegram.', {
+  await bot.editMessageText('🤖 **WHATSAPP MANAGER BOT** 🤖\n\nSelamat datang di Bot Manager WhatsApp!\nBot ini memungkinkan Anda untuk mengelola akun WhatsApp Anda langsung dari Telegram.', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
