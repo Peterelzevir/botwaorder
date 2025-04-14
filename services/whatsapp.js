@@ -8,7 +8,8 @@ const {
   fetchLatestBaileysVersion,
   DisconnectReason,
   makeInMemoryStore,
-  Browsers
+  Browsers,
+  delay
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
@@ -156,8 +157,19 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
     printQRInTerminal: false,
     auth: state,
     browser: Browsers.ubuntu('WhatsApp Manager Bot'),
-    // Penting untuk mendukung pairing code dan QR
-    mobile: false
+    // Penting untuk mendukung QR dengan baik
+    mobile: false,
+    // Tambahan opsi untuk ketahanan
+    retryRequestDelayMs: 1000,
+    defaultQueryTimeoutMs: 60000, // Meningkatkan timeout untuk permintaan
+    qrTimeout: config.QR_TIMEOUT || 60000, // Timeout untuk QR code
+    connectTimeoutMs: 60000, // Timeout untuk koneksi
+    keepAliveIntervalMs: 25000, // Keep-alive untuk WebSocket
+    emitOwnEvents: true, // Menerima events dari diri sendiri
+    markOnlineOnConnect: true, // Tandai diri sebagai online
+    fireInitQueries: true, // Luncurkan query inisialisasi
+    syncFullHistory: false, // Tidak melakukan sinkronisasi penuh untuk performa
+    shouldSyncHistoryMessage: false, // Tidak sync history
   });
 
   // Menyimpan session
@@ -197,8 +209,10 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
     }
 
     if (connection === 'close') {
-      const shouldReconnect = 
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      
+      console.log(`[INFO] Koneksi ditutup dengan status: ${statusCode}`);
       
       if (shouldReconnect) {
         console.log('[INFO] Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
@@ -234,148 +248,6 @@ async function initializeWhatsApp(sessionId, qrCallback, connectionCallback) {
 }
 
 /**
- * Fungsi untuk mengkoneksikan WhatsApp menggunakan pairing code
- * Implementasi yang sesuai dengan contoh dari dokumentasi resmi
- * @param {string} sessionId - ID unik untuk session WhatsApp
- * @param {string} phoneNumber - Nomor telepon untuk pairing (format: 628xxxxxxxxxx)
- * @param {function} connectionCallback - Callback yang dipanggil ketika status koneksi berubah
- */
-async function connectWithPairingCode(sessionId, phoneNumber, connectionCallback) {
-  if (!sessionId) {
-    throw new Error('SessionID tidak dapat kosong');
-  }
-  
-  if (!phoneNumber) {
-    throw new Error('Nomor telepon tidak dapat kosong');
-  }
-  
-  // Memastikan direktori sessions ada
-  ensureSessionsDirectory();
-  
-  // Membuat folder untuk menyimpan autentikasi
-  const sessionFolder = ensureSessionDirectory(sessionId);
-
-  // Menggunakan multi file auth state dengan error handling
-  let state, saveCreds;
-  try {
-    const authResult = await useMultiFileAuthState(sessionFolder);
-    state = authResult.state;
-    saveCreds = authResult.saveCreds;
-  } catch (error) {
-    console.error(`[ERROR] Gagal memuat auth state: ${error.message}`);
-    connectionCallback('error', `Gagal memuat auth state: ${error.message}`);
-    return null;
-  }
-
-  // Mengambil versi terbaru Baileys
-  let version, isLatest;
-  try {
-    const versionInfo = await fetchLatestBaileysVersion();
-    version = versionInfo.version;
-    isLatest = versionInfo.isLatest;
-    console.log(`Menggunakan WA v${version.join('.')}, terbaru: ${isLatest}`);
-  } catch (error) {
-    console.error(`[ERROR] Gagal mendapatkan versi Baileys: ${error.message}`);
-    // Gunakan versi default untuk fallback
-    version = [2, 2311, 6];
-    console.log(`Menggunakan versi fallback WA v${version.join('.')}`);
-  }
-  
-  // Membuat socket WhatsApp dengan mengikuti dokumentasi baileys terbaru
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: config.LOG_LEVEL }),
-    printQRInTerminal: false,
-    auth: state,
-    browser: Browsers.ubuntu('WhatsApp Manager Bot'),
-    // Konfigurasi penting untuk pairing code
-    mobile: false
-  });
-  
-  // Menyimpan session
-  sessions[sessionId] = {
-    sock,
-    connected: false,
-    createdAt: new Date(),
-    lastActive: new Date()
-  };
-
-  // Menangani status koneksi
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === 'close') {
-      const shouldReconnect = 
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      
-      if (shouldReconnect) {
-        console.log('[INFO] Koneksi ditutup karena ', lastDisconnect?.error, ', menghubungkan kembali...');
-        setTimeout(() => {
-          try {
-            initializeWhatsApp(sessionId, () => {}, connectionCallback);
-          } catch (error) {
-            console.error(`[ERROR] Gagal reconnect: ${error.message}`);
-            connectionCallback('error', error.message);
-          }
-        }, config.WA_RECONNECT_INTERVAL);
-      } else {
-        console.log('[INFO] Koneksi ditutup karena logout');
-        delete sessions[sessionId];
-        connectionCallback('disconnected');
-      }
-    } else if (connection === 'open') {
-      console.log('[INFO] Koneksi terbuka');
-      sessions[sessionId].connected = true;
-      sessions[sessionId].lastActive = new Date();
-      connectionCallback('connected');
-    }
-  });
-
-  // Menyimpan kredensial
-  sock.ev.on('creds.update', saveCreds);
-  
-  try {
-    // Format nomor telepon (bersihkan kode +, spasi, dan karakter non-angka)
-    let formattedPhone = phoneNumber.replace(/\D/g, '');
-    
-    // Pastikan format diawali dengan kode negara (tanpa +)
-    if (formattedPhone.startsWith('0')) {
-      formattedPhone = '62' + formattedPhone.substring(1);
-    }
-    
-    // Validasi nomor telepon
-    if (formattedPhone.length < 10 || formattedPhone.length > 15) {
-      throw new Error('Format nomor telepon tidak valid');
-    }
-    
-    // Periksa apakah perangkat sudah terdaftar
-    if (!sock.authState.creds.registered) {
-      console.log(`[INFO] Perangkat belum terdaftar, meminta kode pairing untuk: ${formattedPhone}`);
-      
-      // Minta kode pairing dengan implementasi yang sesuai contoh terbaru
-      try {
-        const code = await sock.requestPairingCode(formattedPhone);
-        console.log(`[INFO] Kode pairing diterima: ${code}`);
-        
-        // Kirim kode pairing ke callback
-        connectionCallback('pairing_code', code);
-      } catch (error) {
-        console.error('[ERROR] Error saat meminta kode pairing:', error);
-        connectionCallback('error', `Gagal mendapatkan kode pairing: ${error.message || 'Unknown error'}`);
-      }
-    } else {
-      console.log('[INFO] Perangkat sudah terdaftar, menunggu koneksi...');
-      connectionCallback('waiting_connection');
-    }
-  } catch (error) {
-    console.error('[ERROR] Error saat proses pairing:', error);
-    connectionCallback('error', error.message || 'Gagal dalam proses pairing');
-  }
-
-  return sock;
-}
-
-/**
  * Mendapatkan daftar semua session WhatsApp aktif
  * @returns {Object} - Objek berisi semua session WhatsApp
  */
@@ -398,6 +270,49 @@ function getWhatsAppSession(sessionId) {
   }
   
   return session || null;
+}
+
+/**
+ * Memuat ulang session WhatsApp dari penyimpanan
+ * Memastikan semua session yang tersimpan dimuat saat aplikasi dimulai
+ */
+async function loadSavedSessions() {
+  try {
+    ensureSessionsDirectory();
+    
+    const sessionFolders = fs.readdirSync(config.SESSIONS_DIR)
+      .filter(file => {
+        // Filter hanya direktori yang berisi file auth
+        const folderPath = path.join(config.SESSIONS_DIR, file);
+        return fs.statSync(folderPath).isDirectory() && 
+               fs.existsSync(path.join(folderPath, 'creds.json'));
+      });
+    
+    console.log(`[INFO] Menemukan ${sessionFolders.length} sesi tersimpan`);
+    
+    // Muat setiap sesi secara berurutan
+    for (const sessionId of sessionFolders) {
+      try {
+        console.log(`[INFO] Mencoba memulihkan sesi: ${sessionId}`);
+        
+        // Inisialisasi sesi dengan callback minimal
+        await initializeWhatsApp(
+          sessionId,
+          () => {}, // QR callback kosong karena sesi seharusnya sudah terotentikasi
+          (status, data) => {
+            console.log(`[INFO] Sesi ${sessionId} status: ${status}`);
+            if (status === 'error') {
+              console.error(`[ERROR] Gagal memulihkan sesi ${sessionId}: ${data}`);
+            }
+          }
+        );
+      } catch (error) {
+        console.error(`[ERROR] Gagal memulihkan sesi ${sessionId}: ${error.message}`);
+      }
+    }
+  } catch (error) {
+    console.error('[ERROR] Gagal memuat sesi tersimpan:', error);
+  }
 }
 
 /**
@@ -454,6 +369,51 @@ async function getGroupInviteLink(sessionId, groupId) {
     return `https://chat.whatsapp.com/${link}`;
   } catch (error) {
     console.error('[ERROR] Error saat mengambil link grup:', error);
+    throw error;
+  }
+}
+
+/**
+ * Mendapatkan semua link invite grup WhatsApp
+ * @param {string} sessionId - ID session WhatsApp
+ * @returns {Promise<Array>} - Array berisi objek grup dengan link invite
+ */
+async function getAllGroupInviteLinks(sessionId) {
+  const session = getWhatsAppSession(sessionId);
+  if (!session || !session.connected) {
+    throw new Error('Session WhatsApp tidak ditemukan atau tidak terhubung');
+  }
+
+  try {
+    const groups = await getWhatsAppGroups(sessionId);
+    const result = [];
+    
+    // Dapatkan link untuk setiap grup dengan penanganan error per grup
+    for (const group of groups) {
+      try {
+        // Tambahkan delay untuk menghindari rate limit
+        await delay(300);
+        const link = await getGroupInviteLink(sessionId, group.id);
+        result.push({
+          id: group.id,
+          name: group.name,
+          link
+        });
+      } catch (error) {
+        console.error(`[ERROR] Gagal mendapatkan link untuk grup ${group.name}: ${error.message}`);
+        // Tetap sertakan grup meskipun link gagal diperoleh
+        result.push({
+          id: group.id,
+          name: group.name,
+          link: null,
+          error: error.message
+        });
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('[ERROR] Error saat mengambil semua link grup:', error);
     throw error;
   }
 }
@@ -606,14 +566,15 @@ setInterval(() => {
 
 module.exports = {
   initializeWhatsApp,
-  connectWithPairingCode,
   getWhatsAppSessions,
   getWhatsAppSession,
   getWhatsAppGroups,
   getGroupInviteLink,
+  getAllGroupInviteLinks,
   changeGroupName,
   changeGroupSettings,
   promoteGroupParticipant,
   removeGroupParticipants,
-  cleanupInactiveSessions
+  cleanupInactiveSessions,
+  loadSavedSessions
 };
