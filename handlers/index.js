@@ -59,11 +59,37 @@ async function handleCallbacks(bot, callbackQuery, userStates) {
       const sessionId = data.split(':')[1];
       await accountHandlers.handleSelectAccount(bot, chatId, messageId, sessionId);
     }
+    else if (data.startsWith('account_settings:')) {
+      const sessionId = data.split(':')[1];
+      await accountHandlers.handleAccountSettings(bot, chatId, messageId, sessionId);
+    }
+    else if (data.startsWith('logout_account:')) {
+      const sessionId = data.split(':')[1];
+      await accountHandlers.handleLogoutAccount(bot, chatId, messageId, sessionId);
+    }
+    else if (data.startsWith('delete_account:')) {
+      const sessionId = data.split(':')[1];
+      await accountHandlers.handleDeleteAccount(bot, chatId, messageId, sessionId);
+    }
+    else if (data.startsWith('confirm_logout:')) {
+      const sessionId = data.split(':')[1];
+      await accountHandlers.handleConfirmLogout(bot, chatId, messageId, sessionId);
+    }
+    else if (data.startsWith('confirm_delete:')) {
+      const sessionId = data.split(':')[1];
+      await accountHandlers.handleConfirmDelete(bot, chatId, messageId, sessionId);
+    }
     
     // Group management
     else if (data.startsWith('view_groups:')) {
-      const sessionId = data.split(':')[1];
-      await groupHandlers.handleViewGroups(bot, chatId, messageId, sessionId);
+      const parts = data.split(':');
+      const sessionId = parts[1];
+      const page = parts.length > 2 ? parseInt(parts[2], 10) : 1;
+      await groupHandlers.handleViewGroups(bot, chatId, messageId, sessionId, page);
+    }
+    else if (data.startsWith('current_page:')) {
+      // Tombol halaman saat ini, tidak perlu melakukan apa-apa
+      await bot.answerCallbackQuery(callbackQuery.id, "Anda berada di halaman ini");
     }
     else if (data.startsWith('get_all_links:')) {
       const sessionId = data.split(':')[1];
