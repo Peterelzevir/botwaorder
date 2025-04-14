@@ -7,12 +7,11 @@
  * - Salin link grup WhatsApp
  * - Administrasi grup: ganti nama, ubah setting, kick member, dll.
  */
-
 // Import modules
 const TelegramBot = require('node-telegram-bot-api');
 const crypto = require('crypto');
 const config = require('./config');
-const createAdminMiddleware = require('./middleware/admin');
+const adminService = require('./middleware/admin');
 const { handleCallbacks } = require('./handlers');
 
 // Global crypto fix untuk baileys
@@ -24,9 +23,8 @@ const bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: true });
 // Menyimpan status percakapan user
 const userStates = {};
 
-// Middleware untuk memeriksa apakah pengguna adalah admin
-const adminMiddleware = createAdminMiddleware(bot);
-bot.use(adminMiddleware);
+// Implementasi mekanisme pengecekan admin
+const adminChecker = adminService(bot);
 
 // Banner console saat bot dimulai
 console.log(`
@@ -39,23 +37,27 @@ Perintah yang tersedia:
 =================================================
 `);
 
-// Handler untuk perintah /start
+// Handler untuk perintah /start dengan pengecekan admin inline
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  
+  // Validasi akses admin
+  if (!adminChecker.isAdmin(userId)) {
+    return bot.sendMessage(chatId, "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.");
+  }
+  
+  // Proses normal untuk user yang terautentikasi
   userStates[chatId] = { state: 'idle' };
-
   const welcomeMessage = `
 🤖 *WHATSAPP MANAGER BOT* 🤖
-
 Selamat datang di Bot Manager WhatsApp!
 Bot ini memungkinkan Anda untuk mengelola akun WhatsApp Anda langsung dari Telegram.
 
 ⚠️ *PERHATIAN* ⚠️
 Anda harus terlebih dahulu menghubungkan akun WhatsApp sebelum menggunakan fitur lainnya.
-
 Silakan gunakan tombol di bawah untuk mulai.
 `;
-
   await bot.sendMessage(chatId, welcomeMessage, {
     parse_mode: 'Markdown',
     reply_markup: {
@@ -67,8 +69,17 @@ Silakan gunakan tombol di bawah untuk mulai.
   });
 });
 
-// Handler untuk callback
+// Handler untuk callback dengan validasi admin terintegrasi
 bot.on('callback_query', async (callbackQuery) => {
+  const userId = callbackQuery.from.id;
+  
+  // Validasi akses admin
+  if (!adminChecker.isAdmin(userId)) {
+    return bot.answerCallbackQuery(callbackQuery.id, 
+      "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan fitur ini.");
+  }
+  
+  // Proses callback untuk user yang terautentikasi
   await handleCallbacks(bot, callbackQuery, userStates);
 });
 
