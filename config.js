@@ -26,16 +26,16 @@ module.exports = {
   
   // Level logging untuk pino logger
   // Options: fatal, error, warn, info, debug, trace, silent
-  LOG_LEVEL: 'warn',
+  LOG_LEVEL: 'error', // Dikurangi levelnya untuk mengurangi noise log
   
   // Timeout untuk QR code (dalam milidetik)
-  QR_TIMEOUT: 60000,
+  QR_TIMEOUT: 120000, // Ditingkatkan menjadi 2 menit
   
   // Interval reconnect WhatsApp (dalam milidetik)
   WA_RECONNECT_INTERVAL: 5000,
   
   // Maksimum percobaan reconnect WhatsApp
-  WA_MAX_RECONNECT_RETRIES: 5,
+  WA_MAX_RECONNECT_RETRIES: 10, // Ditingkatkan untuk ketahanan lebih
   
   // Mode debug
   DEBUG: false,
