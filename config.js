@@ -1,21 +1,22 @@
 /**
- * Konfigurasi Bot Telegram dan WhatsApp Manager
- * Dibuat sebagai alternatif dari file .env
+ * Konfigurasi Global untuk WhatsApp Manager Telegram Bot
  */
-
-const config = {
-  // Token Bot Telegram - Dapatkan dari BotFather
+module.exports = {
+  // Token API Telegram Bot dari BotFather
   TELEGRAM_BOT_TOKEN: '8068335875:AAGnCBR7AxsXdr5PmX1wZBelZIcZ8bP2kcM',
   
-  // Daftar ID Telegram yang memiliki akses admin ke bot
-  // Format: Array of numbers [12345678, 87654321]
-  ADMIN_USER_IDS: [5988451717, 987654321],
+  // Daftar User ID Telegram yang memiliki akses admin
+  // Contoh: [123456789, 987654321]
+  ADMIN_IDS: [
+   5988451717 // Tambahkan ID Telegram admin di sini
+  ],
   
-  // Konfigurasi Logging
-  LOG_LEVEL: 'silent', // silent, error, warn, info, debug, trace
+  // Konfigurasi penyimpanan sesi WhatsApp
+  SESSIONS_DIR: './sessions',
   
-  // Path untuk menyimpan kredensial WhatsApp
-  SESSION_DIR: './sessions'
+  // Timeout untuk QR code (dalam milidetik)
+  QR_TIMEOUT: 60000,
+  
+  // Opsi debug
+  DEBUG: false
 };
-
-module.exports = config;
