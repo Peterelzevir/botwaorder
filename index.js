@@ -2,9 +2,9 @@
  * WhatsApp Manager Telegram Bot - Main Entry Point
  * 
  * Bot Telegram untuk mengelola akun WhatsApp dengan fitur-fitur:
- * - Menambahkan akun WhatsApp melalui QR atau pairing code
+ * - Menambahkan akun WhatsApp melalui QR code
  * - Melihat daftar grup WhatsApp
- * - Salin link grup WhatsApp
+ * - Mendapatkan semua link grup WhatsApp
  * - Administrasi grup: ganti nama, ubah setting, kick member, dll.
  */
 // Import modules
@@ -12,7 +12,10 @@ const TelegramBot = require('node-telegram-bot-api');
 const crypto = require('crypto');
 const config = require('./config');
 const adminService = require('./middleware/admin');
-const { handleCallbacks } = require('./handlers');
+const { handleCallbacks, handleError } = require('./handlers');
+const { loadSavedSessions } = require('./services/whatsapp');
+const path = require('path');
+const fs = require('fs');
 
 // Global crypto fix untuk baileys
 global.crypto = crypto;
@@ -23,6 +26,10 @@ const bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, {
   // Opsi tambahan untuk mencegah error polling
   request: {
     timeout: 60000, // 60 detik timeout untuk request
+    agent: false, // Gunakan agent default
+    pool: {
+      maxSockets: Infinity // Tingkatkan jumlah koneksi untuk rate limiting
+    }
   },
 });
 
@@ -43,6 +50,26 @@ Perintah yang tersedia:
 =================================================
 `);
 
+// Memastikan direktori sessions ada
+function ensureDirectoryExists(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+    console.log(`[INFO] Direktori dibuat: ${dirPath}`);
+  }
+}
+
+// Pemulihan sesi yang tersimpan saat startup
+async function restoreSavedSessions() {
+  try {
+    ensureDirectoryExists(config.SESSIONS_DIR);
+    console.log('[INFO] Memulihkan sesi WhatsApp tersimpan...');
+    await loadSavedSessions();
+    console.log('[INFO] Proses pemulihan sesi selesai');
+  } catch (error) {
+    console.error('[ERROR] Gagal memulihkan sesi:', error);
+  }
+}
+
 // Handler untuk perintah /start dengan pengecekan admin inline
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -51,17 +78,20 @@ bot.onText(/\/start/, async (msg) => {
   try {
     // Validasi akses admin
     if (!adminChecker.isAdmin(userId)) {
-      return bot.sendMessage(chatId, "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.");
+      return bot.sendMessage(chatId, "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan bot ini.", {
+        parse_mode: 'Markdown'
+      });
     }
     
     // Proses normal untuk user yang terautentikasi
     userStates[chatId] = { state: 'idle' };
     const welcomeMessage = `
-🤖 *WHATSAPP MANAGER BOT* 🤖
+🤖 **WHATSAPP MANAGER BOT** 🤖
+
 Selamat datang di Bot Manager WhatsApp!
 Bot ini memungkinkan Anda untuk mengelola akun WhatsApp Anda langsung dari Telegram.
 
-⚠️ *PERHATIAN* ⚠️
+⚠️ **PERHATIAN** ⚠️
 Anda harus terlebih dahulu menghubungkan akun WhatsApp sebelum menggunakan fitur lainnya.
 Silakan gunakan tombol di bawah untuk mulai.
 `;
@@ -79,7 +109,7 @@ Silakan gunakan tombol di bawah untuk mulai.
     
     // Send simplified error message to user
     try {
-      await bot.sendMessage(chatId, '❌ *ERROR*\n\nTerjadi kesalahan saat memulai bot. Silakan coba lagi.', {
+      await bot.sendMessage(chatId, '❌ **ERROR**\n\nTerjadi kesalahan saat memulai bot. Silakan coba lagi.', {
         parse_mode: 'Markdown'
       });
     } catch (msgError) {
@@ -97,7 +127,9 @@ bot.on('callback_query', async (callbackQuery) => {
     // Validasi akses admin
     if (!adminChecker.isAdmin(userId)) {
       return bot.answerCallbackQuery(callbackQuery.id, 
-        "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan fitur ini.");
+        "⛔ Akses ditolak: Anda tidak memiliki hak admin untuk menggunakan fitur ini.", {
+          show_alert: true
+        });
     }
     
     // Proses callback untuk user yang terautentikasi
@@ -107,10 +139,12 @@ bot.on('callback_query', async (callbackQuery) => {
     
     // Mencoba memberi tahu user tentang error
     try {
-      await bot.answerCallbackQuery(callbackQuery.id, "Terjadi kesalahan. Mohon coba lagi.");
+      await bot.answerCallbackQuery(callbackQuery.id, "Terjadi kesalahan. Mohon coba lagi.", {
+        show_alert: true
+      });
       
       // Send more detailed error message
-      await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
+      await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan saat memproses permintaan: ${error.message}`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -135,37 +169,68 @@ bot.on('message', (msg) => {
   }
   
   // Jika tidak ada handler yang menangkap, berikan panduan
-  bot.sendMessage(chatId, "📌 *PANDUAN PENGGUNAAN*\n\nGunakan perintah /start untuk mulai menggunakan bot ini.", {
+  bot.sendMessage(chatId, "📌 **PANDUAN PENGGUNAAN**\n\nGunakan perintah /start untuk mulai menggunakan bot ini.", {
     parse_mode: 'Markdown'
   });
 });
 
-// Error handler yang lebih baik
+// Handler untuk error polling dengan reconnect yang lebih robust
 bot.on('polling_error', (error) => {
   console.error('[POLLING ERROR]:', error);
   
-  // Coba reconnect otomatis jika error koneksi
-  if (error.code === 'ETELEGRAM' || error.code === 'EFATAL' || error.code === 'ECONNRESET') {
-    console.log('Attempting to restart polling in 10 seconds...');
+  // Implementasi strategi reconnect yang robust
+  if (error.code === 'ETELEGRAM' || error.code === 'EFATAL' || error.code === 'ECONNRESET' || 
+      error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+    console.log('[RECONNECT] Attempting to restart polling in 10 seconds...');
     
-    // Stop polling first
-    bot.stopPolling()
-      .then(() => {
-        console.log('Polling stopped successfully');
-        
-        // Restart polling after delay
-        setTimeout(() => {
-          try {
-            bot.startPolling();
-            console.log('Polling restarted successfully');
-          } catch (restartError) {
-            console.error('[CRITICAL] Failed to restart polling:', restartError);
-          }
-        }, 10000);
-      })
-      .catch(stopError => {
-        console.error('[ERROR] Failed to stop polling:', stopError);
-      });
+    // Gunakan flag untuk mencegah multiple restart
+    if (!global.isReconnecting) {
+      global.isReconnecting = true;
+      
+      // Stop polling first
+      bot.stopPolling()
+        .then(() => {
+          console.log('[RECONNECT] Polling stopped successfully');
+          
+          // Restart polling after delay
+          setTimeout(() => {
+            try {
+              bot.startPolling();
+              console.log('[RECONNECT] Polling restarted successfully');
+              global.isReconnecting = false;
+            } catch (restartError) {
+              console.error('[CRITICAL] Failed to restart polling:', restartError);
+              global.isReconnecting = false;
+              
+              // Jika gagal, coba lagi setelah delay lebih lama
+              setTimeout(() => {
+                try {
+                  bot.startPolling();
+                  console.log('[RECONNECT] Polling restarted successfully on second attempt');
+                } catch (error) {
+                  console.error('[FATAL] Failed to restart polling on second attempt:', error);
+                  // Di titik ini mungkin perlu restart aplikasi
+                  process.exit(1);
+                }
+              }, 30000); // 30 detik
+            }
+          }, 10000); // 10 detik
+        })
+        .catch(stopError => {
+          console.error('[ERROR] Failed to stop polling:', stopError);
+          global.isReconnecting = false;
+          
+          // Jika gagal berhenti, coba restart langsung
+          setTimeout(() => {
+            try {
+              bot.startPolling();
+              console.log('[RECONNECT] Polling force-restarted successfully');
+            } catch (error) {
+              console.error('[FATAL] Failed to force-restart polling:', error);
+            }
+          }, 15000); // 15 detik
+        });
+    }
   }
 });
 
@@ -184,5 +249,26 @@ process.on('SIGINT', async () => {
   // Exit with success code
   process.exit(0);
 });
+
+// Handler untuk uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('[UNCAUGHT EXCEPTION] This is a critical error that should be fixed:');
+  console.error(error);
+  
+  // Tidak langsung exit agar layanan tetap berjalan
+  // Process mungkin dalam keadaan tidak stabil, tapi mencoba untuk tetap hidup
+});
+
+// Handler untuk unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION] Promise rejection was not handled:');
+  console.error('Promise:', promise);
+  console.error('Reason:', reason);
+  
+  // Tidak langsung exit agar layanan tetap berjalan
+});
+
+// Memulihkan sesi yang tersimpan saat startup
+restoreSavedSessions();
 
 console.log('Bot telah dimulai. Tekan Ctrl+C untuk menghentikan.');
