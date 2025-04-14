@@ -39,7 +39,7 @@ async function handleAddAccount(bot, chatId, messageId, userStates) {
   } catch (error) {
     console.error('[ERROR] Gagal menangani permintaan tambah akun:', error);
     
-    await bot.editMessageText('❌ **ERROR**\n\nTerjadi kesalahan saat memulai koneksi. Silakan coba lagi.', {
+    await bot.editMessageText('❌ *ERROR*\n\nTerjadi kesalahan saat memulai koneksi. Silakan coba lagi.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -67,7 +67,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
     sessionId
   };
 
-  const statusMessage = await bot.editMessageText('⏳ **MENGHUBUNGKAN KE WHATSAPP**\n\nMempersiapkan koneksi. QR code akan muncul dalam beberapa saat...', {
+  const statusMessage = await bot.editMessageText('⏳ *MENGHUBUNGKAN KE WHATSAPP*\n\nMempersiapkan koneksi. QR code akan muncul dalam beberapa saat...', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown'
@@ -95,7 +95,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
             
             // Kirim gambar QR code dengan caption
             const msg = await bot.sendPhoto(chatId, qrBuffer, {
-              caption: '📲 **SCAN QR CODE**\n\nScan QR code ini dengan WhatsApp di ponsel Anda.\nBuka WhatsApp > Menu > Perangkat Tertaut > Tautkan Perangkat',
+              caption: '📲 *SCAN QR CODE*\n\nScan QR code ini dengan WhatsApp di ponsel Anda.\nBuka WhatsApp > Menu > Perangkat Tertaut > Tautkan Perangkat',
               parse_mode: 'Markdown',
               reply_markup: {
                 inline_keyboard: [
@@ -118,7 +118,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
           } catch (error) {
             console.error('[ERROR] Gagal mengirim QR code sebagai gambar:', error);
             // Fallback ke text mode jika gagal
-            await bot.sendMessage(chatId, '❌ **GAGAL MENGIRIM QR CODE SEBAGAI GAMBAR**\n\nTerjadi kesalahan teknis. Silakan coba lagi.', {
+            await bot.sendMessage(chatId, '❌ *GAGAL MENGIRIM QR CODE SEBAGAI GAMBAR*\n\nTerjadi kesalahan teknis. Silakan coba lagi.', {
               parse_mode: 'Markdown',
               reply_markup: {
                 inline_keyboard: [
@@ -130,7 +130,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
           }
         } else {
           // Fallback ke QR code teks jika gambar gagal
-          await bot.editMessageText('📲 **SCAN QR CODE**\n\nScan QR code berikut dengan WhatsApp di ponsel Anda:\n\n```' + data + '```\n\nQR code akan kedaluwarsa dalam 20 detik.', {
+          await bot.editMessageText('📲 *SCAN QR CODE*\n\nScan QR code berikut dengan WhatsApp di ponsel Anda:\n\n```' + data + '```\n\nQR code akan kedaluwarsa dalam 20 detik.', {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
@@ -158,7 +158,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
           userStates[chatId] = { state: 'idle' };
           
           // Kirim pesan sukses
-          await bot.sendMessage(chatId, '✅ **BERHASIL TERHUBUNG**\n\nAkun WhatsApp berhasil terhubung! Anda sekarang dapat menggunakan fitur-fitur bot.', {
+          await bot.sendMessage(chatId, '✅ *BERHASIL TERHUBUNG*\n\nAkun WhatsApp berhasil terhubung! Anda sekarang dapat menggunakan fitur-fitur bot.', {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -171,7 +171,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
           userStates[chatId] = { state: 'idle' };
           
           // Kirim pesan error
-          await bot.sendMessage(chatId, '❌ **KONEKSI TERPUTUS**\n\nKoneksi WhatsApp terputus. Silakan coba lagi.', {
+          await bot.sendMessage(chatId, '❌ *KONEKSI TERPUTUS*\n\nKoneksi WhatsApp terputus. Silakan coba lagi.', {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -183,7 +183,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
           userStates[chatId] = { state: 'idle' };
           
           // Kirim pesan error dengan detail
-          await bot.sendMessage(chatId, `❌ **ERROR**\n\nTerjadi kesalahan: ${data || 'Unknown error'}`, {
+          await bot.sendMessage(chatId, `❌ *ERROR*\n\nTerjadi kesalahan: ${data || 'Unknown error'}`, {
             parse_mode: 'Markdown',
             reply_markup: {
               inline_keyboard: [
@@ -197,7 +197,7 @@ async function handleConnectWithQR(bot, chatId, messageId, userStates) {
   } catch (error) {
     userStates[chatId] = { state: 'idle' };
     
-    await bot.editMessageText(`❌ **ERROR**\n\nTerjadi kesalahan saat menghubungkan ke WhatsApp: ${error.message}`, {
+    await bot.editMessageText(`❌ *ERROR*\n\nTerjadi kesalahan saat menghubungkan ke WhatsApp: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -234,7 +234,7 @@ async function handleCancelAddAccount(bot, chatId, messageId, userStates) {
   
   // Kirim pesan pembatalan
   try {
-    await bot.editMessageText('⚠️ **DIBATALKAN**\n\nPenambahan akun WhatsApp dibatalkan.', {
+    await bot.editMessageText('⚠️ *DIBATALKAN*\n\nPenambahan akun WhatsApp dibatalkan.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -247,7 +247,7 @@ async function handleCancelAddAccount(bot, chatId, messageId, userStates) {
   } catch (error) {
     console.error('[ERROR] Gagal mengedit pesan saat membatalkan:', error);
     // Fallback jika gagal edit message
-    await bot.sendMessage(chatId, '⚠️ **DIBATALKAN**\n\nPenambahan akun WhatsApp dibatalkan.', {
+    await bot.sendMessage(chatId, '⚠️ *DIBATALKAN*\n\nPenambahan akun WhatsApp dibatalkan.', {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
@@ -269,7 +269,7 @@ async function handleManageAccounts(bot, chatId, messageId) {
   const sessionIds = Object.keys(sessions);
 
   if (sessionIds.length === 0) {
-    await bot.editMessageText('⚠️ **TIDAK ADA AKUN**\n\nAnda belum menambahkan akun WhatsApp. Silakan tambahkan akun terlebih dahulu.', {
+    await bot.editMessageText('⚠️ *TIDAK ADA AKUN*\n\nAnda belum menambahkan akun WhatsApp. Silakan tambahkan akun terlebih dahulu.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -293,7 +293,7 @@ async function handleManageAccounts(bot, chatId, messageId) {
   keyboard.push([{ text: '➕ Tambah Akun Lain', callback_data: 'add_account' }]);
   keyboard.push([{ text: '🔙 Kembali ke Menu Utama', callback_data: 'back_to_main' }]);
 
-  await bot.editMessageText('📱 **KELOLA AKUN WHATSAPP**\n\nPilih akun WhatsApp yang ingin Anda kelola:', {
+  await bot.editMessageText('📱 *KELOLA AKUN WHATSAPP*\n\nPilih akun WhatsApp yang ingin Anda kelola:', {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
@@ -314,7 +314,7 @@ async function handleSelectAccount(bot, chatId, messageId, sessionId) {
   const session = getWhatsAppSession(sessionId);
   
   if (!session) {
-    await bot.editMessageText('❌ **AKUN TIDAK DITEMUKAN**\n\nAkun WhatsApp yang Anda pilih tidak ditemukan.', {
+    await bot.editMessageText('❌ *AKUN TIDAK DITEMUKAN*\n\nAkun WhatsApp yang Anda pilih tidak ditemukan.', {
       chat_id: chatId,
       message_id: messageId,
       parse_mode: 'Markdown',
@@ -331,7 +331,7 @@ async function handleSelectAccount(bot, chatId, messageId, sessionId) {
   const isConnected = session.connected === true;
   const status = isConnected ? '🟢 Terhubung' : '🔴 Terputus';
   
-  await bot.editMessageText(`📱 **DETAIL AKUN WHATSAPP**\n\nID: ${sessionId}\nStatus: ${status}\n\nPilih tindakan:`, {
+  await bot.editMessageText(`📱 *DETAIL AKUN WHATSAPP*\n\nID: ${sessionId}\nStatus: ${status}\n\nPilih tindakan:`, {
     chat_id: chatId,
     message_id: messageId,
     parse_mode: 'Markdown',
